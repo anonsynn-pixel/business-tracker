@@ -613,7 +613,7 @@ function detectDuplicates(){
   allRows.forEach(r=>{
     if(!r.isDebit)return;
     const d=r.date instanceof Date?r.date.toDateString():r.dateRaw;
-    const key=d+'|'+r.amount.toFixed(2)+'|'+r.description.slice(0,25);
+    const key=d+'|'+r.amount.toFixed(2)+'|'+r.description;
     if(seen[key]){dups.add(seen[key]);dups.add(r.id);}else seen[key]=r.id;
   });
   dups.forEach(id=>{const r=allRows.find(r=>r.id===id);if(r)r.isDup=true;});
