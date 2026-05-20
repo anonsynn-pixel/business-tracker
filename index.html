@@ -351,7 +351,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.4);letter-spacing:0.04em;padding-left:2px;">v1.9</span>
+    <span style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.4);letter-spacing:0.04em;padding-left:2px;">v1.91</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -1770,7 +1770,7 @@ function matchAllItems(){
       if(item.parsedDate!==null&&r.date instanceof Date){
         // Allow ±1 day tolerance — invoice date sometimes differs from ANZ debit date
         const diff=Math.abs(r.date.getTime()-item.parsedDate.getTime());
-        dateMatch=diff<=86400000*4; // 4 day tolerance — invoices often dated after debit
+        dateMatch=diff<=86400000*7; // 7 day tolerance — AusPost invoices can be up to a week after debit
       }
       return amtMatch&&dateMatch;
     });
