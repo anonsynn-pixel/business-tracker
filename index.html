@@ -69,7 +69,8 @@ main{max-width:1280px;margin:0 auto;padding:1.5rem;}
 .or-row span{font-size:12px;color:var(--muted);font-family:var(--mono);}
 .btn-load-session{max-width:460px;width:100%;background:#fff;color:var(--teal);border:1.5px solid var(--accent);font-family:var(--sans);font-size:14px;font-weight:500;padding:10px 0;border-radius:8px;cursor:pointer;transition:all 0.15s;}
 .btn-load-session:hover{background:var(--light);}
-.error-banner{background:var(--red-bg);border:1px solid #f5c6c6;border-radius:8px;padding:10px 14px;font-size:13px;color:var(--red);display:none;}
+.btn-go-back{max-width:460px;width:100%;background:transparent;color:var(--muted);border:1px solid var(--border);font-family:var(--sans);font-size:13px;font-weight:500;padding:9px 0;border-radius:8px;cursor:pointer;transition:all 0.15s;display:none;}
+.btn-go-back:hover{border-color:var(--teal);color:var(--teal);background:var(--light);}
 
 /* ── Banners ── */
 .dup-banner{background:var(--orange-bg);border:1px solid var(--orange-border);border-radius:8px;padding:10px 16px;display:none;align-items:center;gap:10px;margin-bottom:0.75rem;flex-wrap:wrap;}
@@ -351,7 +352,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.4);letter-spacing:0.04em;padding-left:2px;">v2.7</span>
+    <span style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.4);letter-spacing:0.04em;padding-left:2px;">v2.8</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -371,7 +372,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <button class="hbtn hbtn-ghost" id="btn-csv"     onclick="exportCSV()">CSV</button>
     <button class="hbtn hbtn-green" id="btn-xl"      onclick="exportExcel()">Export .xlsx</button>
     <button class="hbtn hbtn-ghost" id="btn-newfile" onclick="resetAll()">New file</button>
-    <button class="hbtn" id="btn-debug" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2)!important;color:rgba(255,255,255,0.5);font-size:10px;" onclick="openDebugPanel()">🐛</button>
+    <button class="hbtn" id="btn-debug" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.35)!important;color:rgba(255,255,255,0.8);font-size:12px;padding:6px 10px;" onclick="openDebugPanel()" title="Debug log">🐛</button>
     <!-- Hamburger (mobile only) -->
     <button class="hamburger" id="hamburger-btn" onclick="toggleMobileMenu()" aria-label="Menu">
       <span></span><span></span><span></span>
@@ -417,6 +418,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     </div>
     <div class="or-row"><span>or resume where you left off</span></div>
     <button class="btn-load-session" onclick="document.getElementById('session-input').click()">↓ Load saved session (.json)</button>
+    <button class="btn-go-back" id="btn-go-back" onclick="undoReset()">↩ Go back to previous session</button>
     <div class="error-banner" id="error-banner"></div>
   </section>
 
@@ -1563,7 +1565,10 @@ function checkAutoBackup(){
 function showApp(){
   document.getElementById('upload-section').style.display='none';
   document.getElementById('app-section').style.display='block';
-  ['btn-rules','btn-load','btn-save','btn-csv','btn-xl','btn-newfile'].forEach(id=>document.getElementById(id).style.display='inline-block');
+  ['btn-rules','btn-load','btn-save','btn-csv','btn-xl','btn-newfile','btn-debug'].forEach(id=>document.getElementById(id).style.display='inline-block');
+  // Hide go back button once they've committed to a new session
+  const bb=document.getElementById('btn-go-back');
+  if(bb){bb.style.display='none';bb._snapshot=null;}
   syncMobileMenu(true);
 }
 function resetAll(){
@@ -1571,13 +1576,17 @@ function resetAll(){
     ?'Start a new file?\n\nYour data is safely saved in Google Drive and can be reloaded at any time.'
     :'Start a new file?\n\nMake sure you have saved your session first — any unsaved changes will be lost.';
   if(!confirm(msg))return;
+
+  // Snapshot current state so user can undo
+  const snapshot=allRows.length?{rows:[...allRows],rules:[...rules],sessionName}:null;
+
   if(autoBackupTimer)clearInterval(autoBackupTimer);
   if(driveSyncTimer)clearInterval(driveSyncTimer);
   if(drivePollTimer)clearInterval(drivePollTimer);
   allRows=[];selectedIds.clear();showDupsOnly=false;dupDismissed=false;autocatDismissed=false;autoCatSuggestions=[];bulkItems=[];
   document.getElementById('upload-section').style.display='flex';
   document.getElementById('app-section').style.display='none';
-  ['btn-rules','btn-load','btn-save','btn-csv','btn-xl','btn-newfile'].forEach(id=>document.getElementById(id).style.display='none');
+  ['btn-rules','btn-load','btn-save','btn-csv','btn-xl','btn-newfile','btn-debug'].forEach(id=>document.getElementById(id).style.display='none');
   ['file-input','session-input'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('error-banner').style.display='none';
   document.getElementById('dup-banner').classList.remove('visible');
@@ -1585,6 +1594,28 @@ function resetAll(){
   localStorage.removeItem('anz_tracker_autosave');
   if(driveToken){driveSetStatus('synced','Drive ready');}
   closeMobileMenu();syncMobileMenu(false);
+
+  // Show Go back button if there was something to go back to
+  const backBtn=document.getElementById('btn-go-back');
+  if(snapshot&&backBtn){
+    backBtn.style.display='block';
+    backBtn._snapshot=snapshot;
+  }
+}
+
+function undoReset(){
+  const backBtn=document.getElementById('btn-go-back');
+  const snapshot=backBtn?._snapshot;
+  if(!snapshot)return;
+  allRows=snapshot.rows;
+  rules=snapshot.rules;
+  sessionName=snapshot.sessionName;
+  backBtn.style.display='none';
+  backBtn._snapshot=null;
+  dupDismissed=false;autocatDismissed=false;showDupsOnly=false;selectedIds.clear();
+  detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();
+  if(driveToken)startDriveSyncTimer();else startAutoBackup();
+  toast('↩ Back to your session');
 }
 function showError(msg,inApp){const e=document.getElementById(inApp?'error-banner-app':'error-banner');e.textContent='⚠ '+msg;e.style.display='block';}
 function buildCatFilter(){
