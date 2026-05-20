@@ -1530,9 +1530,9 @@ function exportExcel(){
 }
 
 // ── Bulk Receipt Upload ───────────────────────────────────────────────────────
-// Configure PDF.js worker
+// PDF.js — disable worker for fast startup (receipts are small single-page files)
 if(typeof pdfjsLib!=='undefined'){
-  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  pdfjsLib.GlobalWorkerOptions.workerSrc='';
 }
 
 let bulkItems=[]; // {file, name, type, dataUrl, parsedDate, parsedAmount, matchedIds:[], assignedId, status}
@@ -1560,25 +1560,24 @@ async function processBulkFiles(fileList){
   document.getElementById('br-empty').style.display='none';
   document.getElementById('bulk-file-input').value='';
 
-  const newItems=[];
-  for(const file of Array.from(fileList)){
+  // Process all files in parallel for speed
+  const newItems=await Promise.all(Array.from(fileList).filter(file=>{
     const isPdf=file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf');
-    const isImg=file.type.startsWith('image/');
-    if(!isPdf&&!isImg)continue;
-
+    return isPdf||file.type.startsWith('image/');
+  }).map(async file=>{
+    const isPdf=file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf');
     const dataUrl=await readFileAsDataUrl(file);
     const item={file,name:file.name,type:isPdf?'pdf':'image',dataUrl,
       parsedDate:null,parsedAmount:null,matchedIds:[],assignedId:null,status:'pending'};
-
     if(isPdf){
       try{
         const text=await extractPdfText(dataUrl);
         item.parsedAmount=extractAmount(text);
         item.parsedDate=extractDateFromText(text);
-      }catch(e){item.status='error';}
+      }catch(e){item.status='unmatched';} // timeout or parse fail → manual assign
     }
-    newItems.push(item);
-  }
+    return item;
+  }));
 
   // Merge with existing (avoid duplicates by name)
   const existingNames=new Set(bulkItems.map(i=>i.name));
@@ -1601,14 +1600,21 @@ async function extractPdfText(dataUrl){
   const binary=atob(base64);
   const bytes=new Uint8Array(binary.length);
   for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-  const pdf=await pdfjsLib.getDocument({data:bytes}).promise;
-  let text='';
-  for(let i=1;i<=Math.min(pdf.numPages,3);i++){
-    const page=await pdf.getPage(i);
-    const content=await page.getTextContent();
-    text+=content.items.map(s=>s.str).join(' ')+'\n';
-  }
-  return text;
+
+  // 8-second timeout — if PDF.js hangs, fall through to manual assignment
+  const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),8000));
+  const parse=(async()=>{
+    const pdf=await pdfjsLib.getDocument({data:bytes,verbosity:0}).promise;
+    let text='';
+    // Receipts are 1 page — cap at 2 to be safe
+    for(let i=1;i<=Math.min(pdf.numPages,2);i++){
+      const page=await pdf.getPage(i);
+      const content=await page.getTextContent();
+      text+=content.items.map(s=>s.str).join(' ')+'\n';
+    }
+    return text;
+  })();
+  return Promise.race([parse,timeout]);
 }
 
 function extractAmount(text){
