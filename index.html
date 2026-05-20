@@ -7,7 +7,6 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
   --navy:#002e5d;--teal:#007b8a;--accent:#00a3ad;--light:#ebf5f6;--pale:#f5fbfb;
@@ -1186,19 +1185,27 @@ function driveSetStatus(state,text){
 }
 
 function driveSignIn(silent=false){
+  // Ensure GIS library is ready before calling
+  if(typeof google==='undefined'||!google.accounts){
+    if(silent){setTimeout(()=>driveSignIn(true),500);return;}
+    toast('⚠ Google library not loaded yet — try again');return;
+  }
   const client=google.accounts.oauth2.initTokenClient({
     client_id:CLIENT_ID,scope:SCOPES,
-    prompt:silent?'':'select_account',
+    prompt:silent?'none':'select_account',
     callback:(resp)=>{
       if(resp.error){
         if(silent){
-          // Silent failed — show button for manual sign-in
-          localStorage.removeItem('drive_was_signed_in');
+          // 'none' prompt failed (session expired) — show button for manual tap
+          driveSetStatus('syncing','');
+          document.getElementById('drive-status').classList.remove('vis');
           if(window.location.protocol==='https:'){
             document.getElementById('btn-drive-signin').classList.add('vis');
             const mBtn=document.getElementById('mmenu-drive');
             if(mBtn)mBtn.style.display='block';
           }
+          // Still try to restore from local backup while they re-auth
+          if(!allRows.length)checkAutoBackup();
         }else{
           driveSetStatus('error','Sign-in failed');
           toast('⚠ Google sign-in failed: '+resp.error);
@@ -1217,7 +1224,7 @@ function driveSignIn(silent=false){
       driveLoadSession();
     }
   });
-  client.requestAccessToken(silent?{prompt:''}:{});
+  client.requestAccessToken({prompt:silent?'none':''});
 }
 
 function driveSignOut(){
@@ -1530,9 +1537,17 @@ function exportExcel(){
 }
 
 // ── Bulk Receipt Upload ───────────────────────────────────────────────────────
-// PDF.js — disable worker for fast startup (receipts are small single-page files)
-if(typeof pdfjsLib!=='undefined'){
-  pdfjsLib.GlobalWorkerOptions.workerSrc='';
+// PDF.js loaded lazily only if fast extraction fails
+let pdfJsReady=false;
+function loadPdfJs(){
+  return new Promise(res=>{
+    if(typeof pdfjsLib!=='undefined'){pdfjsLib.GlobalWorkerOptions.workerSrc='';pdfJsReady=true;res();return;}
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload=()=>{pdfjsLib.GlobalWorkerOptions.workerSrc='';pdfJsReady=true;res();};
+    s.onerror=()=>res(); // fail silently
+    document.head.appendChild(s);
+  });
 }
 
 let bulkItems=[]; // {file, name, type, dataUrl, parsedDate, parsedAmount, matchedIds:[], assignedId, status}
@@ -1596,62 +1611,111 @@ function readFileAsDataUrl(file){
 }
 
 async function extractPdfText(dataUrl){
+  // FAST PATH: extract raw text from PDF binary without PDF.js
+  // Works perfectly for generated PDFs like AusPost, Xero, eBay invoices
+  const rawText=extractPdfRaw(dataUrl);
+  const amt=extractAmount(rawText);
+  const dt=extractDateFromText(rawText);
+  if(amt||dt)return rawText; // fast path worked — return immediately
+
+  // FALLBACK: load PDF.js for scanned or complex PDFs
+  try{
+    await loadPdfJs();
+    if(!pdfJsReady)return rawText;
+    const base64=dataUrl.split(',')[1];
+    const binary=atob(base64);
+    const bytes=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+    const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),6000));
+    const parse=(async()=>{
+      const pdf=await pdfjsLib.getDocument({data:bytes,verbosity:0}).promise;
+      let text='';
+      for(let i=1;i<=Math.min(pdf.numPages,2);i++){
+        const page=await pdf.getPage(i);
+        const tc=await page.getTextContent();
+        text+=tc.items.map(s=>s.str).join(' ')+'\n';
+      }
+      return text;
+    })();
+    return await Promise.race([parse,timeout]);
+  }catch(e){return rawText;}
+}
+
+function extractPdfRaw(dataUrl){
+  // Decode PDF binary and extract human-readable text strings
   const base64=dataUrl.split(',')[1];
   const binary=atob(base64);
-  const bytes=new Uint8Array(binary.length);
-  for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+  let text='';
 
-  // 8-second timeout — if PDF.js hangs, fall through to manual assignment
-  const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),8000));
-  const parse=(async()=>{
-    const pdf=await pdfjsLib.getDocument({data:bytes,verbosity:0}).promise;
-    let text='';
-    // Receipts are 1 page — cap at 2 to be safe
-    for(let i=1;i<=Math.min(pdf.numPages,2);i++){
-      const page=await pdf.getPage(i);
-      const content=await page.getTextContent();
-      text+=content.items.map(s=>s.str).join(' ')+'\n';
-    }
-    return text;
-  })();
-  return Promise.race([parse,timeout]);
+  // Method 1: parenthesised string literals (standard PDF text encoding)
+  // Matches (text content) used in Tj/TJ operators
+  const parenRe=/\(([^\\)]{1,200})\)/g;
+  let m;
+  while((m=parenRe.exec(binary))!==null){
+    const s=m[1].replace(/\\n/g,' ').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'');
+    if(s.trim())text+=s+' ';
+  }
+
+  // Method 2: angle-bracket hex strings <hex> (alternate PDF text encoding)
+  const hexRe=/<([0-9a-fA-F]{4,})>/g;
+  while((m=hexRe.exec(binary))!==null){
+    try{
+      const hex=m[1];
+      let s='';
+      for(let i=0;i<hex.length-1;i+=2)s+=String.fromCharCode(parseInt(hex.slice(i,i+2),16));
+      s=s.replace(/[\x00-\x1f]/g,' ').trim();
+      if(s.length>1)text+=s+' ';
+    }catch(e){}
+  }
+
+  return text;
 }
 
 function extractAmount(text){
-  // Try various total/amount patterns
   const patterns=[
-    /(?:total|amount paid|amount due|grand total|to pay|total amount|you paid)[^\d]*\$?\s*([\d,]+\.[\d]{2})/gi,
-    /\$\s*([\d,]+\.[\d]{2})\s*(?:total|paid|due)/gi,
-    /(?:^|\n)\s*\$?\s*([\d,]+\.[\d]{2})\s*$/gm,
+    /(?:total amount payable|total amount due|amount payable|total paid|total due|amount paid|grand total|to pay|you paid)[^\d$]*\$?\s*([\d,]+\.[\d]{2})/gi,
+    /(?:total|amount)[^\d$\n]{0,20}\$\s*([\d,]+\.[\d]{2})/gi,
+    /\$\s*([\d,]+\.[\d]{2})\s*(?:total|paid|due|payable)/gi,
   ];
   const amounts=[];
   for(const pat of patterns){
     let m;const re=new RegExp(pat.source,pat.flags);
     while((m=re.exec(text))!==null){
       const val=parseFloat(m[1].replace(/,/g,''));
-      if(val>0&&val<50000)amounts.push(val);
+      if(val>0.50&&val<50000)amounts.push(val);
     }
   }
   if(!amounts.length)return null;
-  // Return the most common amount, or the largest if all unique
   const freq={};let best=null,bestCount=0;
   amounts.forEach(a=>{freq[a]=(freq[a]||0)+1;if(freq[a]>bestCount){bestCount=freq[a];best=a;}});
   return best;
 }
 
 function extractDateFromText(text){
+  const months={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,
+    january:1,february:2,march:3,april:4,june:6,july:7,august:8,september:9,october:10,november:11,december:12};
   const patterns=[
+    // DD Month YYYY — e.g. "17 May 2026" (AusPost, Xero)
+    /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{4})/i,
+    // DD/MM/YYYY or DD-MM-YYYY
     /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/,
+    // YYYY-MM-DD (ISO)
     /(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/,
-    /(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{4})/i,
+    // Month DD, YYYY — e.g. "May 17, 2026"
+    /(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2}),?\s+(\d{4})/i,
   ];
-  const months={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
   for(const pat of patterns){
     const m=text.match(pat);
     if(m){
-      if(pat.source.includes('jan|feb')){
-        const mo=months[m[2].toLowerCase().slice(0,3)];
-        return new Date(+m[3],mo-1,+m[1]);
+      const src=pat.source;
+      if(src.startsWith('(\\d{1,2})\\s+(jan')){
+        // DD Month YYYY
+        const mo=months[m[2].toLowerCase()];
+        if(mo)return new Date(+m[3],mo-1,+m[1]);
+      }else if(src.startsWith('(jan')){
+        // Month DD YYYY
+        const mo=months[m[1].toLowerCase()];
+        if(mo)return new Date(+m[3],mo-1,+m[2]);
       }else if(m[1].length===4){
         return new Date(+m[1],+m[2]-1,+m[3]);
       }else{
@@ -1674,9 +1738,9 @@ function matchAllItems(){
       let amtMatch=true,dateMatch=true;
       if(item.parsedAmount!==null)amtMatch=Math.abs(r.amount-item.parsedAmount)<0.015;
       if(item.parsedDate!==null&&r.date instanceof Date){
-        dateMatch=r.date.getFullYear()===item.parsedDate.getFullYear()&&
-                  r.date.getMonth()===item.parsedDate.getMonth()&&
-                  r.date.getDate()===item.parsedDate.getDate();
+        // Allow ±1 day tolerance — invoice date sometimes differs from ANZ debit date
+        const diff=Math.abs(r.date.getTime()-item.parsedDate.getTime());
+        dateMatch=diff<=86400000*4; // 4 day tolerance — invoices often dated after debit
       }
       return amtMatch&&dateMatch;
     });
@@ -1821,9 +1885,9 @@ window.addEventListener('load',()=>{
   const wasSigned=localStorage.getItem('drive_was_signed_in')==='true';
   if(window.location.protocol==='https:'){
     if(wasSigned){
-      // Try silent auto sign-in — no popup, uses existing Google session
       driveSetStatus('syncing','Reconnecting…');
-      setTimeout(()=>driveSignIn(true),1200); // small delay for GIS library to load
+      // Poll until GIS library is ready, then attempt silent sign-in
+      waitForGIS(()=>driveSignIn(true));
     } else {
       document.getElementById('btn-drive-signin').classList.add('vis');
       const mBtn=document.getElementById('mmenu-drive');
@@ -1832,6 +1896,21 @@ window.addEventListener('load',()=>{
   }
   if(!wasSigned&&!allRows.length)checkAutoBackup();
 });
+
+function waitForGIS(callback,attempts=0){
+  if(typeof google!=='undefined'&&google.accounts&&google.accounts.oauth2){
+    callback();
+  } else if(attempts<20){
+    setTimeout(()=>waitForGIS(callback,attempts+1),250); // retry every 250ms, up to 5s
+  } else {
+    // GIS never loaded (offline/blocked) — show manual button
+    document.getElementById('drive-status').classList.remove('vis');
+    document.getElementById('btn-drive-signin').classList.add('vis');
+    const mBtn=document.getElementById('mmenu-drive');
+    if(mBtn)mBtn.style.display='block';
+    if(!allRows.length)checkAutoBackup();
+  }
+}
 </script>
 </body>
 </html>
