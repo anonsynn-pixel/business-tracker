@@ -351,6 +351,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
+    <span style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.4);letter-spacing:0.04em;padding-left:2px;">v1.9</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -1564,13 +1565,17 @@ function exportExcel(){
 // ── Bulk Receipt Upload ───────────────────────────────────────────────────────
 // PDF.js loaded lazily only if fast extraction fails
 let pdfJsReady=false;
+const PDFJS_WORKER='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 function loadPdfJs(){
   return new Promise(res=>{
-    if(typeof pdfjsLib!=='undefined'){pdfjsLib.GlobalWorkerOptions.workerSrc='';pdfJsReady=true;res();return;}
+    if(typeof pdfjsLib!=='undefined'){
+      pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS_WORKER;
+      pdfJsReady=true;res();return;
+    }
     const s=document.createElement('script');
     s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    s.onload=()=>{pdfjsLib.GlobalWorkerOptions.workerSrc='';pdfJsReady=true;res();};
-    s.onerror=()=>res(); // fail silently
+    s.onload=()=>{pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS_WORKER;pdfJsReady=true;res();};
+    s.onerror=()=>res();
     document.head.appendChild(s);
   });
 }
@@ -1667,13 +1672,11 @@ async function extractPdfText(dataUrl){
 }
 
 function extractPdfRaw(dataUrl){
-  // Decode PDF binary and extract human-readable text strings
   const base64=dataUrl.split(',')[1];
   const binary=atob(base64);
   let text='';
 
   // Method 1: parenthesised string literals (standard PDF text encoding)
-  // Matches (text content) used in Tj/TJ operators
   const parenRe=/\(([^\\)]{1,200})\)/g;
   let m;
   while((m=parenRe.exec(binary))!==null){
@@ -1681,11 +1684,12 @@ function extractPdfRaw(dataUrl){
     if(s.trim())text+=s+' ';
   }
 
-  // Method 2: angle-bracket hex strings <hex> (alternate PDF text encoding)
+  // Method 2: angle-bracket hex strings — skip large blobs (images/fonts)
   const hexRe=/<([0-9a-fA-F]{4,})>/g;
   while((m=hexRe.exec(binary))!==null){
+    const hex=m[1];
+    if(hex.length>1500)continue; // skip — embedded image or font data, not text
     try{
-      const hex=m[1];
       let s='';
       for(let i=0;i<hex.length-1;i+=2)s+=String.fromCharCode(parseInt(hex.slice(i,i+2),16));
       s=s.replace(/[\x00-\x1f]/g,' ').trim();
