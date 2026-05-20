@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ANZ Business Purchase Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
@@ -36,20 +35,9 @@ header{background:var(--navy);padding:0 1.5rem;display:flex;align-items:center;j
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--navy);color:#fff;font-family:var(--sans);font-size:13px;padding:10px 22px;border-radius:24px;box-shadow:0 4px 20px rgba(0,0,0,0.25);transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1);z-index:9999;white-space:nowrap;}
 #toast.show{transform:translateX(-50%) translateY(0);}
 
-/* ── Drive sync ── */
-.drive-status{display:none;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:rgba(255,255,255,0.7);white-space:nowrap;}
-.drive-status.vis{display:flex;}
-.drive-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:#aaa;}
-.drive-dot.synced{background:#4ade80;}
-.drive-dot.syncing{background:var(--gold);animation:pulse 1s infinite;}
-.drive-dot.error{background:var(--red);}
-@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
-.btn-drive-signin{display:none;background:#fff;color:var(--navy);border:none;font-family:var(--sans);font-size:12px;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;transition:all 0.15s;white-space:nowrap;align-items:center;gap:6px;}
-.btn-drive-signin.vis{display:flex;}
-.btn-drive-signin:hover{background:#e8f4fd;}
-.btn-drive-signout{display:none;background:transparent;border:1px solid rgba(255,255,255,0.25)!important;color:rgba(255,255,255,0.7);font-family:var(--sans);font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;}
-.btn-drive-signout.vis{display:inline-block;}
-.btn-drive-signout:hover{background:rgba(255,255,255,0.1);}
+/* ── Auto-backup indicator ── */
+#backup-dot{width:7px;height:7px;border-radius:50%;background:var(--green);opacity:0;transition:opacity 0.4s;flex-shrink:0;}
+#backup-dot.flash{opacity:1;}
 
 main{max-width:1280px;margin:0 auto;padding:1.5rem;}
 
@@ -281,18 +269,8 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <span class="logo-badge">ANZ</span>
   </div>
   <div class="header-right">
-    <!-- Drive sync status -->
-    <div class="drive-status" id="drive-status">
-      <div class="drive-dot" id="drive-dot"></div>
-      <span id="drive-status-text">Drive</span>
-    </div>
-    <button class="btn-drive-signin" id="btn-drive-signin" onclick="driveSignIn()">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-      Connect Google Drive
-    </button>
-    <button class="btn-drive-signout" id="btn-drive-signout" onclick="driveSignOut()">Sign out</button>
-    <div id="backup-dot" style="display:none"></div>
-    <button class="hbtn hbtn-ghost" id="btn-rules"   onclick="openRules()">⚙ Rules</button>
+    <div id="backup-dot" title="Auto-saved"></div>
+    <button class="hbtn hbtn-ghost" id="btn-rules"   onclick="openRules()" title="Auto-categorise rules">⚙ Rules</button>
     <button class="hbtn hbtn-ghost" id="btn-load"    onclick="document.getElementById('session-input').click()">↑ Load session</button>
     <button class="hbtn hbtn-save"  id="btn-save"    onclick="saveSession()">↓ Save session</button>
     <button class="hbtn hbtn-ghost" id="btn-csv"     onclick="exportCSV()">CSV</button>
@@ -613,7 +591,7 @@ function detectDuplicates(){
   allRows.forEach(r=>{
     if(!r.isDebit)return;
     const d=r.date instanceof Date?r.date.toDateString():r.dateRaw;
-    const key=d+'|'+r.amount.toFixed(2)+'|'+r.description;
+    const key=d+'|'+r.amount.toFixed(2)+'|'+r.description.slice(0,25);
     if(seen[key]){dups.add(seen[key]);dups.add(r.id);}else seen[key]=r.id;
   });
   dups.forEach(id=>{const r=allRows.find(r=>r.id===id);if(r)r.isDup=true;});
@@ -996,117 +974,19 @@ function viewReceipt(id){
 }
 function closeModal(){document.getElementById('rcpt-modal').classList.remove('open');document.getElementById('rcpt-modal-content').innerHTML='';}
 
-// ── Google Drive Sync ─────────────────────────────────────────────────────────
-const CLIENT_ID='432426606260-hs07g9kdggjq0gq17tsmscuub2fv3325.apps.googleusercontent.com';
-const SCOPES='https://www.googleapis.com/auth/drive.appdata';
-const DRIVE_FILE_NAME='anz_tracker_session.json';
-let driveToken=null,driveFileId=null,driveSyncTimer=null;
-
-function driveSetStatus(state,text){
-  const wrap=document.getElementById('drive-status');
-  const dot=document.getElementById('drive-dot');
-  const txt=document.getElementById('drive-status-text');
-  wrap.classList.add('vis');dot.className='drive-dot '+state;txt.textContent=text;
-}
-
-function driveSignIn(){
-  const client=google.accounts.oauth2.initTokenClient({
-    client_id:CLIENT_ID,scope:SCOPES,
-    callback:(resp)=>{
-      if(resp.error){driveSetStatus('error','Sign-in failed');toast('⚠ Google sign-in failed: '+resp.error);return;}
-      driveToken=resp.access_token;
-      document.getElementById('btn-drive-signin').classList.remove('vis');
-      document.getElementById('btn-drive-signout').classList.add('vis');
-      driveSetStatus('syncing','Loading from Drive…');
-      driveLoadSession();
-    }
-  });
-  client.requestAccessToken();
-}
-
-function driveSignOut(){
-  if(driveToken)google.accounts.oauth2.revoke(driveToken,()=>{});
-  driveToken=null;driveFileId=null;
-  if(driveSyncTimer)clearInterval(driveSyncTimer);
-  document.getElementById('btn-drive-signin').classList.add('vis');
-  document.getElementById('btn-drive-signout').classList.remove('vis');
-  document.getElementById('drive-status').classList.remove('vis');
-  toast('Disconnected from Google Drive');
-}
-
-async function driveLoadSession(){
-  try{
-    driveSetStatus('syncing','Loading…');
-    const res=await fetch(
-      `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${DRIVE_FILE_NAME}'&fields=files(id,modifiedTime)`,
-      {headers:{Authorization:'Bearer '+driveToken}});
-    const data=await res.json();
-    if(!data.files||!data.files.length){
-      driveSetStatus('synced','Drive ready');
-      document.getElementById('btn-drive-signin').classList.remove('vis');
-      toast('✓ Connected to Google Drive — no previous session found');
-      startDriveSyncTimer();return;
-    }
-    driveFileId=data.files[0].id;
-    const dl=await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
-      {headers:{Authorization:'Bearer '+driveToken}});
-    if(!dl.ok)throw new Error('Download failed');
-    const d=await dl.json();
-    if(!d.rows||!Array.isArray(d.rows))throw new Error('Invalid data in Drive');
-    allRows=d.rows.map(r=>{
-      let dt=r.date;
-      if(typeof dt==='string'){const m=dt.match(/^(\d{4})-(\d{2})-(\d{2})/);dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(dt);}
-      return{...r,date:dt,bpType:r.bpType||'business',isDup:r.isDup||false,autoCat:r.autoCat||false};
-    });
-    if(d.rules&&Array.isArray(d.rules))rules=d.rules;
-    sessionName=d.sessionName||DRIVE_FILE_NAME;
-    detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();
-    const ago=Math.round((Date.now()-new Date(d.savedAt).getTime())/60000);
-    driveSetStatus('synced','Synced · '+(ago<1?'just now':ago+'m ago'));
-    toast('✓ Loaded from Google Drive — '+allRows.length+' transactions');
-    startDriveSyncTimer();
-  }catch(e){driveSetStatus('error','Sync error');toast('⚠ Drive error: '+e.message);}
-}
-
-async function driveSaveSession(){
-  if(!driveToken||!allRows.length)return;
-  driveSetStatus('syncing','Saving…');
-  try{
-    const payload=JSON.stringify({version:3,savedAt:new Date().toISOString(),sessionName,rules,
-      rows:allRows.map(r=>({...r,date:r.date instanceof Date?r.date.toISOString():r.date}))});
-    if(driveFileId){
-      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`,{
-        method:'PATCH',headers:{Authorization:'Bearer '+driveToken,'Content-Type':'application/json'},body:payload});
-    }else{
-      const form=new FormData();
-      form.append('metadata',new Blob([JSON.stringify({name:DRIVE_FILE_NAME,parents:['appDataFolder']})],{type:'application/json'}));
-      form.append('file',new Blob([payload],{type:'application/json'}));
-      const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{
-        method:'POST',headers:{Authorization:'Bearer '+driveToken},body:form});
-      if(!r.ok)throw new Error('Create failed');
-      driveFileId=(await r.json()).id;
-    }
-    const t=new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
-    driveSetStatus('synced','Synced · '+t);
-    try{localStorage.setItem('anz_tracker_autosave',payload);}catch(e2){}
-  }catch(e){
-    driveSetStatus('error','Sync failed — saved locally');
-    try{localStorage.setItem('anz_tracker_autosave',JSON.stringify({version:3,savedAt:new Date().toISOString(),sessionName,rules,rows:allRows.map(r=>({...r,date:r.date instanceof Date?r.date.toISOString():r.date}))}));}catch(e2){}
-  }
-}
-
-function startDriveSyncTimer(){
-  if(driveSyncTimer)clearInterval(driveSyncTimer);
-  driveSyncTimer=setInterval(()=>{if(driveToken&&allRows.length)driveSaveSession();},30000);
-}
-
-// ── Local auto-backup fallback ────────────────────────────────────────────────
+// ── Auto-backup to localStorage ───────────────────────────────────────────────
 function startAutoBackup(){
-  if(driveToken){startDriveSyncTimer();return;}
   if(autoBackupTimer)clearInterval(autoBackupTimer);
   autoBackupTimer=setInterval(()=>{
     if(!allRows.length)return;
-    try{localStorage.setItem('anz_tracker_autosave',JSON.stringify({version:3,savedAt:new Date().toISOString(),sessionName,rules,rows:allRows.map(r=>({...r,date:r.date instanceof Date?r.date.toISOString():r.date}))}));}catch(e){}
+    try{
+      const payload=JSON.stringify({version:3,savedAt:new Date().toISOString(),sessionName,
+        rows:allRows.map(r=>({...r,date:r.date instanceof Date?r.date.toISOString():r.date})),
+        rules});
+      localStorage.setItem('anz_tracker_autosave',payload);
+      const dot=document.getElementById('backup-dot');
+      dot.classList.add('flash');setTimeout(()=>dot.classList.remove('flash'),1200);
+    }catch(e){/* quota exceeded – silently skip */}
   },30000);
 }
 
@@ -1117,14 +997,22 @@ function checkAutoBackup(){
     const d=JSON.parse(saved);
     if(!d.rows||!d.rows.length)return;
     const age=Math.round((Date.now()-new Date(d.savedAt).getTime())/60000);
-    if(confirm(`Local backup found from ${age} minute${age!==1?'s':''} ago (${d.rows.length} transactions).\nRestore it?`)){
-      allRows=d.rows.map(r=>{let dt=r.date;if(typeof dt==='string'){const m=dt.match(/^(\d{4})-(\d{2})-(\d{2})/);dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(dt);}return{...r,date:dt,bpType:r.bpType||'business',isDup:r.isDup||false,autoCat:r.autoCat||false};});
-      if(d.rules&&Array.isArray(d.rules))rules=d.rules;
-      sessionName=d.sessionName||'restored';
-      detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();startAutoBackup();
-      toast('✓ Local backup restored — '+allRows.length+' transactions');
+    if(confirm(`Auto-backup found from ${age} minute${age!==1?'s':''} ago (${d.rows.length} transactions).\n\nRestore it?`)){
+      restoreFromBackup(d);
     }
   }catch(e){}
+}
+
+function restoreFromBackup(d){
+  allRows=d.rows.map(r=>{
+    let dt=r.date;
+    if(typeof dt==='string'){const m=dt.match(/^(\d{4})-(\d{2})-(\d{2})/);dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(dt);}
+    return{...r,date:dt,bpType:r.bpType||'business',isDup:r.isDup||false,autoCat:r.autoCat||false};
+  });
+  if(d.rules&&Array.isArray(d.rules))rules=d.rules;
+  sessionName=d.sessionName||'auto-restored';
+  detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();startAutoBackup();
+  toast('✓ Auto-backup restored — '+allRows.length+' transactions');
 }
 
 // ── App state ─────────────────────────────────────────────────────────────────
@@ -1135,7 +1023,6 @@ function showApp(){
 }
 function resetAll(){
   if(autoBackupTimer)clearInterval(autoBackupTimer);
-  if(driveSyncTimer)clearInterval(driveSyncTimer);
   allRows=[];selectedIds.clear();showDupsOnly=false;dupDismissed=false;autocatDismissed=false;autoCatSuggestions=[];
   document.getElementById('upload-section').style.display='flex';
   document.getElementById('app-section').style.display='none';
@@ -1145,7 +1032,6 @@ function resetAll(){
   document.getElementById('dup-banner').classList.remove('visible');
   document.getElementById('autocat-banner').classList.remove('visible');
   localStorage.removeItem('anz_tracker_autosave');
-  if(driveToken){driveSetStatus('synced','Drive ready');}
 }
 function showError(msg,inApp){const e=document.getElementById(inApp?'error-banner-app':'error-banner');e.textContent='⚠ '+msg;e.style.display='block';}
 function buildCatFilter(){
@@ -1158,14 +1044,13 @@ function buildCatFilter(){
 // ── Session save/load ─────────────────────────────────────────────────────────
 function saveSession(){
   if(!allRows.length)return;
-  if(driveToken){driveSaveSession();toast('✓ Saving to Google Drive…');return;}
   const payload={version:3,savedAt:new Date().toISOString(),sessionName,rules,
     rows:allRows.map(r=>({...r,date:r.date instanceof Date?r.date.toISOString():r.date}))};
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));
   a.download='ANZ_Session_'+new Date().toISOString().slice(0,10)+'.json';
   a.click();
-  toast('✓ Session saved');
+  toast('✓ Session saved — store in Google Drive, Dropbox or iCloud');
 }
 function loadSession(file){
   if(!file)return;
@@ -1281,11 +1166,8 @@ function exportExcel(){
 // ── Init ──────────────────────────────────────────────────────────────────────
 buildBulkCatSel();
 updatePeriodLabels();
+// Check for auto-backup on page load
 window.addEventListener('load',()=>{
-  // Show Drive sign-in button only when served over HTTPS
-  if(window.location.protocol==='https:'){
-    document.getElementById('btn-drive-signin').classList.add('vis');
-  }
   if(!allRows.length)checkAutoBackup();
 });
 </script>
