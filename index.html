@@ -723,9 +723,15 @@ function parseCSV(text){
   for(const line of data){
     const cols=splitCSV(line);if(cols.length<2)continue;
     let date='',desc='',debit=0,credit=0;
-    if(cols.length>=5){date=cl(cols[0]);desc=cl(cols[1]);debit=parseNum(cols[2]);credit=parseNum(cols[3]);}
-    else if(cols.length>=3){date=cl(cols[0]);desc=cl(cols[2]);const a=parseNum(cols[1]);if(a<0)debit=Math.abs(a);else credit=a;}
-    else{date=cl(cols[0]);desc=cl(cols[1]);}
+    if(cols.length>=5&&cols[2].match(/[\d.]/g)&&cols[3].match(/[\d.]/g)){
+      date=cl(cols[0]);desc=cl(cols[1]);debit=parseNum(cols[2]);credit=parseNum(cols[3]);
+    }else if(cols.length>=3){
+      date=cl(cols[0]);
+      const isCol2Amt=Math.abs(parseNum(cols[1]))>0||/^[-$]?\d/.test(cols[1].trim());
+      desc=isCol2Amt?cl(cols[2]):cl(cols[1]);
+      const rawAmt=isCol2Amt?parseNum(cols[1]):parseNum(cols[2]);
+      if(rawAmt<0)debit=Math.abs(rawAmt);else credit=rawAmt;
+    }else{date=cl(cols[0]);desc=cl(cols[1]);}
     if(!date||!desc)continue;
     const pd=parseDate(date);const isD=debit>0;const amt=isD?debit:credit;
     parsed.push({date:pd||date,dateRaw:date,description:desc,amount:amt,isDebit:isD,
@@ -1185,31 +1191,20 @@ function driveSetStatus(state,text){
 }
 
 function driveSignIn(silent=false){
-  // Ensure GIS library is ready before calling
   if(typeof google==='undefined'||!google.accounts){
     if(silent){setTimeout(()=>driveSignIn(true),500);return;}
     toast('⚠ Google library not loaded yet — try again');return;
   }
+
+  let timeoutId=null;
+
   const client=google.accounts.oauth2.initTokenClient({
     client_id:CLIENT_ID,scope:SCOPES,
-    prompt:silent?'none':'select_account',
     callback:(resp)=>{
+      if(timeoutId)clearTimeout(timeoutId);
       if(resp.error){
-        if(silent){
-          // 'none' prompt failed (session expired) — show button for manual tap
-          driveSetStatus('syncing','');
-          document.getElementById('drive-status').classList.remove('vis');
-          if(window.location.protocol==='https:'){
-            document.getElementById('btn-drive-signin').classList.add('vis');
-            const mBtn=document.getElementById('mmenu-drive');
-            if(mBtn)mBtn.style.display='block';
-          }
-          // Still try to restore from local backup while they re-auth
-          if(!allRows.length)checkAutoBackup();
-        }else{
-          driveSetStatus('error','Sign-in failed');
-          toast('⚠ Google sign-in failed: '+resp.error);
-        }
+        showDriveSignInButton();
+        if(!silent)toast('⚠ Google sign-in failed: '+resp.error);
         return;
       }
       driveToken=resp.access_token;
@@ -1224,7 +1219,26 @@ function driveSignIn(silent=false){
       driveLoadSession();
     }
   });
-  client.requestAccessToken({prompt:silent?'none':''});
+
+  if(silent){
+    // Silent: no prompt, but add a 6-second timeout in case callback never fires
+    timeoutId=setTimeout(()=>{
+      showDriveSignInButton();
+    },6000);
+    client.requestAccessToken({prompt:''});
+  } else {
+    client.requestAccessToken();
+  }
+}
+
+function showDriveSignInButton(){
+  document.getElementById('drive-status').classList.remove('vis');
+  if(window.location.protocol==='https:'){
+    document.getElementById('btn-drive-signin').classList.add('vis');
+    const mBtn=document.getElementById('mmenu-drive');
+    if(mBtn)mBtn.style.display='block';
+  }
+  if(!allRows.length)checkAutoBackup();
 }
 
 function driveSignOut(){
@@ -1321,7 +1335,8 @@ async function driveSaveSession(){
     try{localStorage.setItem('anz_tracker_autosave',payload);}catch(e2){}
   }catch(e){
     driveSetStatus('error','Sync failed — saved locally');
-    try{localStorage.setItem('anz_tracker_autosave',JSON.stringify({version:3,savedAt:new Date().toISOString(),sessionName,rules,rows:allRows.map(r=>({...r,date:r.date instanceof Date?r.date.toISOString():r.date}))}));}catch(e2){}
+    const fallback={version:3,savedAt:new Date().toISOString(),sessionName,rules,rows:allRows.map(r=>r.receiptFile?{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,data:null,stripped:true}}:r).map(r=>({...r,date:r.date instanceof Date?r.date.toISOString():r.date}))};
+    try{localStorage.setItem('anz_tracker_autosave',JSON.stringify(fallback));}catch(e2){}
   }
 }
 
@@ -1357,7 +1372,17 @@ function startAutoBackup(){
   if(autoBackupTimer)clearInterval(autoBackupTimer);
   autoBackupTimer=setInterval(()=>{
     if(!allRows.length)return;
-    try{localStorage.setItem('anz_tracker_autosave',JSON.stringify({version:3,savedAt:new Date().toISOString(),sessionName,rules,rows:allRows.map(r=>({...r,date:r.date instanceof Date?r.date.toISOString():r.date}))}));}catch(e){}
+    const payload={version:3,savedAt:new Date().toISOString(),sessionName,rules,
+      rows:allRows.map(r=>({...r,date:r.date instanceof Date?r.date.toISOString():r.date}))};
+    try{
+      localStorage.setItem('anz_tracker_autosave',JSON.stringify(payload));
+    }catch(e){
+      if(e.name==='QuotaExceededError'||e.name==='NS_ERROR_DOM_QUOTA_REACHED'||(e.message&&e.message.toLowerCase().includes('quota'))){
+        // Save lightweight version without base64 receipt data
+        const stripped={...payload,rows:payload.rows.map(r=>r.receiptFile?{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,data:null,stripped:true}}:r)};
+        try{localStorage.setItem('anz_tracker_autosave',JSON.stringify(stripped));}catch(e2){}
+      }
+    }
   },30000);
 }
 
@@ -1728,6 +1753,7 @@ function extractDateFromText(text){
 
 function matchAllItems(){
   bulkItems.forEach(item=>{
+    if(item.isManual)return; // respect user's manual assignment
     item.matchedIds=[];item.assignedId=null;
     if(item.type==='image'){item.status='image';return;}
     if(!item.parsedAmount&&!item.parsedDate){item.status='unmatched';return;}
@@ -1844,13 +1870,17 @@ function renderBulkResults(){
 }
 
 function bulkAssign(idx,val){
-  if(val==='__unassign__'){bulkItems[idx].assignedId=null;}
-  else if(val){bulkItems[idx].assignedId=val;}
-  else{bulkItems[idx].assignedId=null;}
-  // Re-run match on all to resolve any conflicts
-  matchAllItems();
-  // But keep user's manual override
-  if(val&&val!=='__unassign__')bulkItems[idx].assignedId=val;
+  if(val==='__unassign__'){
+    bulkItems[idx].assignedId=null;
+    bulkItems[idx].isManual=true;
+  }else if(val){
+    bulkItems[idx].assignedId=val;
+    bulkItems[idx].isManual=true;
+  }else{
+    bulkItems[idx].assignedId=null;
+    bulkItems[idx].isManual=false;
+  }
+  matchAllItems(); // re-run for non-manual items only
   renderBulkResults();
 }
 
