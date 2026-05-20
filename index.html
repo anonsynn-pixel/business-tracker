@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ANZ Business Purchase Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
@@ -36,20 +35,9 @@ header{background:var(--navy);padding:0 1.5rem;display:flex;align-items:center;j
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--navy);color:#fff;font-family:var(--sans);font-size:13px;padding:10px 22px;border-radius:24px;box-shadow:0 4px 20px rgba(0,0,0,0.25);transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1);z-index:9999;white-space:nowrap;}
 #toast.show{transform:translateX(-50%) translateY(0);}
 
-/* ── Drive sync ── */
-.drive-status{display:none;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:rgba(255,255,255,0.7);white-space:nowrap;}
-.drive-status.vis{display:flex;}
-.drive-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:#aaa;}
-.drive-dot.synced{background:#4ade80;}
-.drive-dot.syncing{background:var(--gold);animation:pulse 1s infinite;}
-.drive-dot.error{background:var(--red);}
-@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
-.btn-drive-signin{display:none;background:#fff;color:var(--navy);border:none;font-family:var(--sans);font-size:12px;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;transition:all 0.15s;white-space:nowrap;align-items:center;gap:6px;}
-.btn-drive-signin.vis{display:flex;}
-.btn-drive-signin:hover{background:#e8f4fd;}
-.btn-drive-signout{display:none;background:transparent;border:1px solid rgba(255,255,255,0.25)!important;color:rgba(255,255,255,0.7);font-family:var(--sans);font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;}
-.btn-drive-signout.vis{display:inline-block;}
-.btn-drive-signout:hover{background:rgba(255,255,255,0.1);}
+/* ── Auto-backup indicator ── */
+#backup-dot{width:7px;height:7px;border-radius:50%;background:var(--green);opacity:0;transition:opacity 0.4s;flex-shrink:0;}
+#backup-dot.flash{opacity:1;}
 
 main{max-width:1280px;margin:0 auto;padding:1.5rem;}
 
@@ -258,74 +246,8 @@ td{padding:9px 11px;color:var(--text);vertical-align:middle;}
 /* checkbox style */
 input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--navy);}
 
-/* ── Bulk receipt upload ── */
-.bulk-rcpt-bar{background:#fff;border-radius:10px;border:2px dashed var(--border);padding:10px 16px;display:flex;align-items:center;gap:12px;margin-bottom:0.75rem;cursor:pointer;transition:all 0.2s;flex-wrap:wrap;}
-.bulk-rcpt-bar:hover{border-color:var(--accent);background:var(--pale);}
-.bulk-rcpt-bar.drag-active{border-color:var(--accent);background:var(--light);}
-.bulk-rcpt-icon{font-size:20px;flex-shrink:0;}
-.bulk-rcpt-text{flex:1;}
-.bulk-rcpt-title{font-size:13px;font-weight:600;color:var(--navy);}
-.bulk-rcpt-sub{font-size:11px;color:var(--muted);margin-top:2px;}
-.bulk-rcpt-count{font-family:var(--mono);font-size:11px;background:var(--green-bg);color:var(--green);padding:3px 9px;border-radius:12px;white-space:nowrap;}
-.bulk-rcpt-btn{background:var(--navy);color:#fff;border:none;font-family:var(--sans);font-size:12px;font-weight:500;padding:7px 14px;border-radius:7px;cursor:pointer;white-space:nowrap;flex-shrink:0;}
-.bulk-rcpt-btn:hover{background:var(--teal);}
-
-/* bulk receipt modal */
-#bulk-rcpt-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:600;align-items:flex-start;justify-content:center;padding-top:60px;}
-#bulk-rcpt-modal.open{display:flex;}
-.br-box{background:#fff;border-radius:14px;width:min(760px,96vw);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,0.25);}
-.br-hdr{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);}
-.br-hdr-title{font-size:14px;font-weight:600;color:var(--navy);}
-.br-close{background:transparent;border:none;font-size:20px;cursor:pointer;color:var(--muted);}
-.br-close:hover{color:var(--red);}
-.br-drop{border:2px dashed var(--border);border-radius:10px;padding:2rem;text-align:center;cursor:pointer;transition:all 0.2s;margin:16px 20px 0;}
-.br-drop:hover,.br-drop.drag-active{border-color:var(--accent);background:var(--pale);}
-.br-drop-icon{font-size:32px;margin-bottom:8px;}
-.br-drop-text{font-size:13px;color:var(--muted);}
-.br-drop-text strong{color:var(--navy);}
-.br-body{flex:1;overflow-y:auto;padding:12px 20px 20px;}
-.br-stats{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
-.br-stat{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:12px;}
-.br-stat.matched{background:var(--green-bg);color:var(--green);}
-.br-stat.ambiguous{background:var(--orange-bg);color:var(--orange);}
-.br-stat.unmatched{background:#f0f0f0;color:var(--muted);}
-.br-stat.image{background:var(--light);color:var(--teal);}
-.br-section-label{font-size:11px;font-family:var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 6px;}
-.br-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;margin-bottom:6px;border:1px solid var(--border);background:#fff;}
-.br-item.matched{border-color:#9dd4b4;background:#f4fbf7;}
-.br-item.ambiguous{border-color:var(--orange-border);background:var(--orange-bg);}
-.br-item.unmatched{border-color:#e0e0e0;background:#fafafa;}
-.br-item.image-item{border-color:var(--border);background:var(--pale);}
-.br-thumb{width:44px;height:44px;object-fit:cover;border-radius:5px;flex-shrink:0;}
-.br-thumb-pdf{width:44px;height:44px;background:var(--red-bg);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
-.br-item-info{flex:1;min-width:0;}
-.br-item-name{font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.br-item-detail{font-size:11px;color:var(--muted);margin-top:2px;font-family:var(--mono);}
-.br-item-match{font-size:11px;color:var(--green);margin-top:3px;font-family:var(--mono);}
-.br-item-warn{font-size:11px;color:var(--orange);margin-top:3px;}
-.br-assign-sel{border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-family:var(--sans);font-size:11px;color:var(--text);background:#fff;outline:none;cursor:pointer;width:100%;margin-top:5px;}
-.br-status-icon{font-size:16px;flex-shrink:0;margin-top:2px;}
-.br-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;}
-.br-apply-btn{background:var(--green);color:#fff;border:none;font-family:var(--sans);font-size:13px;font-weight:500;padding:9px 22px;border-radius:7px;cursor:pointer;}
-.br-apply-btn:hover{background:#155f44;}
-.br-apply-btn:disabled{opacity:0.5;cursor:not-allowed;}
-.br-footer-note{font-size:12px;color:var(--muted);}
-.br-processing{text-align:center;padding:2rem;color:var(--muted);font-size:13px;}
-.br-spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:8px;}
-@keyframes spin{to{transform:rotate(360deg);}}
-.hamburger{display:none;background:transparent;border:none;cursor:pointer;padding:6px;color:#fff;flex-direction:column;gap:4px;flex-shrink:0;}
-.hamburger span{display:block;width:20px;height:2px;background:#fff;border-radius:2px;transition:all 0.2s;}
-.mobile-menu{display:none;position:fixed;top:56px;right:0;left:0;background:var(--navy);z-index:190;padding:10px;flex-direction:column;gap:6px;box-shadow:0 6px 20px rgba(0,0,0,0.3);}
-.mobile-menu.open{display:flex;}
-.mmenu-btn{background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.9);font-family:var(--sans);font-size:13px;font-weight:500;padding:10px 16px;border-radius:8px;cursor:pointer;text-align:left;transition:all 0.15s;width:100%;}
-.mmenu-btn:hover{background:rgba(255,255,255,0.1);}
-.mmenu-btn.green{background:var(--green);border-color:var(--green);color:#fff;}
-.mmenu-btn.teal{background:var(--accent);border-color:var(--accent);color:#fff;}
-.mmenu-sep{height:1px;background:rgba(255,255,255,0.1);margin:2px 0;}
-.drive-status-mobile{display:flex;align-items:center;gap:8px;padding:8px 16px;font-family:var(--mono);font-size:12px;color:rgba(255,255,255,0.7);}
-
 @media(max-width:720px){
-  header{padding:0 1rem;height:52px;}
+  header{padding:0 1rem;}
   .logo-text{display:none;}
   main{padding:1rem;}
   .upload-card{padding:2rem 1.25rem;}
@@ -333,13 +255,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
   .table-wrap table{display:none;}
   .mobile-cards{display:block;}
   .kpi-grid{grid-template-columns:repeat(2,1fr);}
-  /* Hide all header buttons — replaced by hamburger */
-  .hbtn{display:none!important;}
-  .btn-drive-signin{display:none!important;}
-  .btn-drive-signout{display:none!important;}
-  .drive-status{display:none!important;}
-  #backup-dot{display:none!important;}
-  .hamburger{display:flex;}
+  .hbtn{font-size:11px;padding:5px 8px;}
 }
 @media(max-width:400px){.m-fields{grid-template-columns:1fr;}}
 </style>
@@ -351,52 +267,17 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.4);letter-spacing:0.04em;padding-left:2px;">v2.7</span>
   </div>
   <div class="header-right">
-    <!-- Drive sync status -->
-    <div class="drive-status" id="drive-status">
-      <div class="drive-dot" id="drive-dot"></div>
-      <span id="drive-status-text">Drive</span>
-    </div>
-    <button class="btn-drive-signin" id="btn-drive-signin" onclick="driveSignIn()">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-      Connect Google Drive
-    </button>
-    <button class="btn-drive-signout" id="btn-drive-signout" onclick="driveSignOut()">Sign out</button>
-    <div id="backup-dot" style="display:none"></div>
-    <button class="hbtn hbtn-ghost" id="btn-rules"   onclick="openRules()">⚙ Rules</button>
+    <div id="backup-dot" title="Auto-saved"></div>
+    <button class="hbtn hbtn-ghost" id="btn-rules"   onclick="openRules()" title="Auto-categorise rules">⚙ Rules</button>
     <button class="hbtn hbtn-ghost" id="btn-load"    onclick="document.getElementById('session-input').click()">↑ Load session</button>
     <button class="hbtn hbtn-save"  id="btn-save"    onclick="saveSession()">↓ Save session</button>
     <button class="hbtn hbtn-ghost" id="btn-csv"     onclick="exportCSV()">CSV</button>
     <button class="hbtn hbtn-green" id="btn-xl"      onclick="exportExcel()">Export .xlsx</button>
     <button class="hbtn hbtn-ghost" id="btn-newfile" onclick="resetAll()">New file</button>
-    <button class="hbtn" id="btn-debug" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2)!important;color:rgba(255,255,255,0.5);font-size:10px;" onclick="openDebugPanel()">🐛</button>
-    <!-- Hamburger (mobile only) -->
-    <button class="hamburger" id="hamburger-btn" onclick="toggleMobileMenu()" aria-label="Menu">
-      <span></span><span></span><span></span>
-    </button>
   </div>
 </header>
-
-<!-- Mobile slide-down menu -->
-<div class="mobile-menu" id="mobile-menu">
-  <div class="drive-status-mobile" id="drive-status-mobile" style="display:none">
-    <div class="drive-dot" id="drive-dot-mobile"></div>
-    <span id="drive-status-text-mobile">Drive</span>
-  </div>
-  <button class="mmenu-btn teal" id="mmenu-drive" onclick="driveSignIn();closeMobileMenu()" style="display:none">🔗 Connect Google Drive</button>
-  <button class="mmenu-btn" id="mmenu-signout" onclick="driveSignOut();closeMobileMenu()" style="display:none">Sign out of Drive</button>
-  <div class="mmenu-sep" id="mmenu-sep1" style="display:none"></div>
-  <button class="mmenu-btn" id="mmenu-rules" onclick="openRules();closeMobileMenu()" style="display:none">⚙ Auto-categorise Rules</button>
-  <button class="mmenu-btn" id="mmenu-load" onclick="document.getElementById('session-input').click();closeMobileMenu()" style="display:none">↑ Load session file</button>
-  <button class="mmenu-btn teal" id="mmenu-save" onclick="saveSession();closeMobileMenu()" style="display:none">↓ Save session</button>
-  <div class="mmenu-sep"></div>
-  <button class="mmenu-btn" onclick="exportCSV();closeMobileMenu()">Export CSV</button>
-  <button class="mmenu-btn green" onclick="exportExcel();closeMobileMenu()">Export .xlsx for accountant</button>
-  <div class="mmenu-sep"></div>
-  <button class="mmenu-btn" onclick="resetAll();closeMobileMenu()">+ New file</button>
-</div>
 
 <div id="toast"></div>
 
@@ -521,18 +402,6 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
       <button class="btn-action" onclick="resetAll()">+ New file</button>
     </div>
 
-    <!-- Bulk Receipt Upload Bar -->
-    <div class="bulk-rcpt-bar" id="bulk-rcpt-bar"
-         ondragover="bulkBarDragOver(event)" ondragleave="bulkBarDragLeave()" ondrop="bulkBarDrop(event)">
-      <div class="bulk-rcpt-icon">📎</div>
-      <div class="bulk-rcpt-text">
-        <div class="bulk-rcpt-title">Bulk Upload Receipts</div>
-        <div class="bulk-rcpt-sub">Drag PDFs or photos here, or click Choose files to browse</div>
-      </div>
-      <span class="bulk-rcpt-count" id="bulk-rcpt-count" style="display:none"></span>
-      <button class="bulk-rcpt-btn" onclick="document.getElementById('bulk-file-input').click()">Choose files</button>
-    </div>
-
     <div class="table-wrap">
       <table>
         <thead><tr>
@@ -554,33 +423,6 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <div class="mobile-cards" id="mobile-cards"></div>
   </section>
 </main>
-
-<!-- Bulk receipt upload modal -->
-<div id="bulk-rcpt-modal">
-  <div class="br-box">
-    <div class="br-hdr">
-      <div class="br-hdr-title">📎 Bulk Upload Receipts</div>
-      <button class="br-close" onclick="closeBulkRcpt()">✕</button>
-    </div>
-    <label class="br-drop" id="br-drop" for="bulk-file-input"
-         ondragover="brDropOver(event)" ondragleave="brDropLeave()" ondrop="brDropFiles(event)">
-      <div class="br-drop-icon">📂</div>
-      <div class="br-drop-text"><strong>Drop receipts here</strong> or click to browse<br>
-        <span style="font-size:11px">PDFs auto-matched by date &amp; amount · Images assigned manually</span>
-      </div>
-    </label>
-    <div class="br-body" id="br-body">
-      <div style="text-align:center;padding:1.5rem;color:var(--muted);font-size:13px;" id="br-empty">
-        Upload receipts above to start matching
-      </div>
-    </div>
-    <div class="br-footer">
-      <span class="br-footer-note" id="br-footer-note"></span>
-      <button class="br-apply-btn" id="br-apply-btn" onclick="applyBulkReceipts()" disabled>Apply matched receipts</button>
-    </div>
-  </div>
-</div>
-<input type="file" id="bulk-file-input" accept="image/*,.pdf" multiple style="display:none" onchange="processBulkFiles(this.files)">
 
 <!-- Receipt modal -->
 <div id="rcpt-modal">
@@ -621,23 +463,6 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
 
 <input type="file" id="file-input"    accept=".csv"  style="display:none" onchange="handleFile(this.files[0])">
 <input type="file" id="session-input" accept=".json" style="display:none" onchange="loadSession(this.files[0])">
-
-<!-- Debug log modal -->
-<div id="debug-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2000;align-items:flex-start;justify-content:center;padding-top:60px;">
-  <div style="background:#1a2e3b;border-radius:12px;width:min(700px,96vw);max-height:80vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,0.4);">
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.1);">
-      <span style="color:#fff;font-family:var(--mono);font-size:13px;font-weight:500;">🐛 Debug Log</span>
-      <div style="display:flex;gap:8px;">
-        <button onclick="copyDebugLogs()" style="background:rgba(255,255,255,0.1);border:none;color:#aaa;font-family:var(--sans);font-size:12px;padding:5px 12px;border-radius:5px;cursor:pointer;">Copy all</button>
-        <button onclick="document.getElementById('debug-panel-body').innerHTML='';debugLogs.length=0;" style="background:rgba(255,255,255,0.1);border:none;color:#aaa;font-family:var(--sans);font-size:12px;padding:5px 12px;border-radius:5px;cursor:pointer;">Clear</button>
-        <button onclick="closeDebugPanel()" style="background:transparent;border:none;color:#aaa;font-size:18px;cursor:pointer;line-height:1;">✕</button>
-      </div>
-    </div>
-    <div id="debug-panel-body" style="flex:1;overflow-y:auto;padding:10px 14px;font-family:monospace;font-size:11px;color:#ccc;background:#0f1e2a;border-radius:0 0 12px 12px;">
-      <div style="color:#555;font-style:italic;">Events will appear here as they happen…</div>
-    </div>
-  </div>
-</div>
 
 <script>
 // ── Constants & state ─────────────────────────────────────────────────────────
@@ -694,12 +519,9 @@ let rules=[...DEFAULT_RULES];
 let autoBackupTimer=null;
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
-let _toastTimer=null;
 function toast(msg,dur=2800){
-  const e=document.getElementById('toast');
-  if(_toastTimer)clearTimeout(_toastTimer);
-  e.textContent=msg;e.classList.add('show');
-  _toastTimer=setTimeout(()=>{e.classList.remove('show');_toastTimer=null;},dur);
+  const e=document.getElementById('toast');e.textContent=msg;e.classList.add('show');
+  setTimeout(()=>e.classList.remove('show'),dur);
 }
 function fmtDate(d){
   if(!d||!(d instanceof Date)||isNaN(d))return'—';
@@ -715,21 +537,7 @@ function parseDate(s){
   if((m=s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/)))return new Date(+m[1],+m[2]-1,+m[3]);
   return null;
 }
-function parseNum(s){
-  s=(s||'').trim();
-  const neg=s.startsWith('-')||s.startsWith('(');
-  const n=parseFloat(s.replace(/[^0-9.]/g,''))||0;
-  return neg?-n:n;
-}
-
-// Save dates as local YYYY-MM-DD to avoid UTC timezone shift in AEST
-function dateToStr(d){
-  if(!(d instanceof Date)||isNaN(d))return d;
-  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-}
-function serializeRows(rows){
-  return rows.map(r=>({...r,date:dateToStr(r.date)}));
-}
+function parseNum(s){return parseFloat((s||'').replace(/[^0-9.\-]/g,''))||0;}
 
 // ── Drag & drop ───────────────────────────────────────────────────────────────
 function onDragOver(e){e.preventDefault();document.getElementById('drop-zone').classList.add('drag-over');}
@@ -739,7 +547,6 @@ function onDrop(e){e.preventDefault();onDragLeave();const f=e.dataTransfer.files
 // ── CSV load ──────────────────────────────────────────────────────────────────
 function handleFile(file){
   if(!file)return;
-  dbg('handleFile',{name:file.name,size:file.size});
   if(!file.name.endsWith('.csv')){showError('Please upload a .csv from ANZ Internet Banking.',false);return;}
   sessionName=file.name.replace('.csv','');
   const r=new FileReader();
@@ -748,34 +555,19 @@ function handleFile(file){
   document.getElementById('file-input').value='';
 }
 
-function rowKey(date,amount,desc){
-  // Stable key for matching rows across imports
-  const d=date instanceof Date&&!isNaN(date)?dateToStr(date):(typeof date==='string'?date.slice(0,10):String(date));
-  return d+'|'+parseFloat(amount).toFixed(2)+'|'+desc.trim();
-}
-
 function parseCSV(text){
   const lines=text.trim().split(/\r?\n/).filter(l=>l.trim());
   if(lines.length<2)throw new Error('File appears empty.');
   const first=lines[0].toLowerCase();
-  // Only treat as header if the line has ALL numeric-free content AND multiple header words
-  const hdrWords=['date','description','amount','debit','credit','balance','transaction'];
-  const hdrMatches=hdrWords.filter(w=>first.includes(w)).length;
-  const hasHdr=hdrMatches>=2&&!first.match(/^\d{1,2}[\/\-]/); // 2+ header words AND doesn't start with a date
+  const hasHdr=first.includes('date')||first.includes('description')||first.includes('amount');
   const data=hasHdr?lines.slice(1):lines;
   const parsed=[];
   for(const line of data){
     const cols=splitCSV(line);if(cols.length<2)continue;
     let date='',desc='',debit=0,credit=0;
-    if(cols.length>=5&&cols[2].match(/[\d.]/g)&&cols[3].match(/[\d.]/g)){
-      date=cl(cols[0]);desc=cl(cols[1]);debit=parseNum(cols[2]);credit=parseNum(cols[3]);
-    }else if(cols.length>=3){
-      date=cl(cols[0]);
-      const isCol2Amt=Math.abs(parseNum(cols[1]))>0||/^[-$]?\d/.test(cols[1].trim());
-      desc=isCol2Amt?cl(cols[2]):cl(cols[1]);
-      const rawAmt=isCol2Amt?parseNum(cols[1]):parseNum(cols[2]);
-      if(rawAmt<0)debit=Math.abs(rawAmt);else credit=rawAmt;
-    }else{date=cl(cols[0]);desc=cl(cols[1]);}
+    if(cols.length>=5){date=cl(cols[0]);desc=cl(cols[1]);debit=parseNum(cols[2]);credit=parseNum(cols[3]);}
+    else if(cols.length>=3){date=cl(cols[0]);desc=cl(cols[2]);const a=parseNum(cols[1]);if(a<0)debit=Math.abs(a);else credit=a;}
+    else{date=cl(cols[0]);desc=cl(cols[1]);}
     if(!date||!desc)continue;
     const pd=parseDate(date);const isD=debit>0;const amt=isD?debit:credit;
     parsed.push({date:pd||date,dateRaw:date,description:desc,amount:amt,isDebit:isD,
@@ -784,81 +576,12 @@ function parseCSV(text){
       isDup:false,autoCat:false,id:Math.random().toString(36).slice(2)});
   }
   if(!parsed.length)throw new Error('No valid rows found.');
-
-  // ── Smart merge: preserve existing progress ───────────────────────────────
-  const isFirstLoad=!allRows.length;
-
-  if(isFirstLoad){
-    // No existing data — just load fresh
-    allRows=parsed;
-    finishLoad(parsed.length+' transactions loaded');
-  } else {
-    // Build lookup of existing rows by key
-    // For rows with the same key, track how many we've seen (to handle true duplicates)
-    const existingByKey={};
-    allRows.forEach(r=>{
-      const k=rowKey(r.date,r.amount,r.description);
-      if(!existingByKey[k])existingByKey[k]=[];
-      existingByKey[k].push(r);
-    });
-
-    // Track how many of each key we've consumed from existing
-    const consumedCount={};
-
-    const merged=[];
-    let added=0,preserved=0;
-    const usedIds=new Set();
-
-    parsed.forEach(newRow=>{
-      const k=rowKey(newRow.date,newRow.amount,newRow.description);
-      const consumed=consumedCount[k]||0;
-      const matches=existingByKey[k]||[];
-
-      if(matches.length>consumed){
-        // Found an existing row — reuse it with all its progress intact
-        merged.push(matches[consumed]);
-        usedIds.add(matches[consumed].id);
-        consumedCount[k]=consumed+1;
-        preserved++;
-      } else {
-        // Genuinely new transaction — add it fresh
-        merged.push(newRow);
-        added++;
-      }
-    });
-
-    // Keep existing rows that weren't consumed by the merge
-    // Use consumedCount vs existingByKey length to detect exhausted groups
-    // Build once outside the filter — avoids O(n²) Set construction inside the loop
-    const parsedKeySet=new Set(parsed.map(p=>rowKey(p.date,p.amount,p.description)));
-    const retained=allRows.filter(r=>{
-      if(usedIds.has(r.id))return false; // already merged into new position
-      const k=rowKey(r.date,r.amount,r.description);
-      const consumed=consumedCount[k]||0;
-      const total=(existingByKey[k]||[]).length;
-      // Keep if key not in new CSV at all, OR this key was exhausted (CSV had fewer than existing)
-      return !parsedKeySet.has(k)||(consumed>=total&&consumed>0);
-    });
-    allRows=[...merged,...retained];
-
-    const msg=added>0
-      ?`✓ ${added} new transaction${added!==1?'s':''} added · ${preserved} existing preserved${retained.length?' · '+retained.length+' older rows kept':''}`
-      :`✓ Up to date — ${preserved} transactions preserved${retained.length?' · '+retained.length+' older rows kept':''}`;
-    finishLoad(msg);
-  }
-}
-
-function finishLoad(msg){
-  // Reset dismissal flags and stale selections
-  dupDismissed=false;
-  autocatDismissed=false;
-  showDupsOnly=false;
-  selectedIds.clear();
+  allRows=parsed;
   detectDuplicates();
   runAutoCatSilent();
   buildCatFilter();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();
-  if(driveToken)driveSaveSession();else startAutoBackup();
-  toast(msg);
+  startAutoBackup();
+  toast('✓ Loaded '+parsed.length+' transactions');
 }
 
 // ── Duplicate detection ───────────────────────────────────────────────────────
@@ -866,9 +589,9 @@ function detectDuplicates(){
   allRows.forEach(r=>r.isDup=false);
   const seen={};const dups=new Set();
   allRows.forEach(r=>{
-    if(!r.isDebit||r.receiptFile)return;
-    const d=r.date instanceof Date&&!isNaN(r.date)?r.date.toDateString():(r.dateRaw||String(r.date));
-    const key=d+'|'+r.amount.toFixed(2)+'|'+r.description;
+    if(!r.isDebit)return;
+    const d=r.date instanceof Date?r.date.toDateString():r.dateRaw;
+    const key=d+'|'+r.amount.toFixed(2)+'|'+r.description.slice(0,25);
     if(seen[key]){dups.add(seen[key]);dups.add(r.id);}else seen[key]=r.id;
   });
   dups.forEach(id=>{const r=allRows.find(r=>r.id===id);if(r)r.isDup=true;});
@@ -1007,9 +730,7 @@ function getDateRange(){
   if(v==='custom'){
     const f=document.getElementById('date-from').value;
     const t=document.getElementById('date-to').value;
-    // Parse as LOCAL midnight to avoid UTC offset excluding the boundary day in AEST
-    const parseLocal=s=>{const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?new Date(+m[1],+m[2]-1,+m[3]):null;};
-    return{from:f?parseLocal(f):null,to:t?new Date(+t.slice(0,4),+t.slice(5,7)-1,+t.slice(8,10),23,59,59):null};
+    return{from:f?new Date(f):null,to:t?new Date(t+'T23:59:59'):null};
   }
   if(v.startsWith('fy')){const yr=parseInt(v.slice(2));return{from:new Date(yr-1,6,1),to:new Date(yr,5,30,23,59,59)};}
   const fyYr=parseInt(document.getElementById('bas-fy-sel').value);
@@ -1022,7 +743,7 @@ function getDateRange(){
 function inRange(r,range){
   if(!range)return true;
   const d=r.date instanceof Date?r.date:null;
-  if(!d||isNaN(d))return false; // rows with unparseable dates are excluded from filtered views
+  if(!d||isNaN(d))return true;
   if(range.from&&d<range.from)return false;
   if(range.to&&d>range.to)return false;
   return true;
@@ -1128,7 +849,7 @@ function bulkApplyCat(){
   let n=0;
   selectedIds.forEach(id=>{const r=allRows.find(r=>r.id===id);if(r&&r.bpType==='business'){r.category=cat;n++;}});
   toast(`✓ Set "${cat}" on ${n} transaction${n!==1?'s':''}`);
-  clearSelection();updateKPIs();updateUncatBadge();renderTable();
+  clearSelection();updateKPIs();renderTable();
 }
 function bulkSetBP(val){
   let n=0;
@@ -1246,299 +967,26 @@ function viewReceipt(id){
   const r=allRows.find(r=>r.id===id);if(!r||!r.receiptFile)return;
   document.getElementById('rcpt-modal-name').textContent=r.receiptFile.name;
   const c=document.getElementById('rcpt-modal-content');
-  if(!r.receiptFile.data||r.receiptFile.stripped){
-    c.innerHTML=`<p style="color:var(--muted);font-size:13px;padding:1rem 0">⚠ File preview not available — this receipt was stored in a local backup that ran out of space.<br><br>The filename <strong>${esc(r.receiptFile.name)}</strong> is recorded. Re-attach the file using + Attach to restore the preview.</p>`;
-  } else if(r.receiptFile.type&&r.receiptFile.type.startsWith('image/')){
-    c.innerHTML=`<img class="rcpt-modal-img" src="${r.receiptFile.data}">`;
-  } else if(r.receiptFile.type==='application/pdf'){
-    c.innerHTML=`<iframe class="rcpt-modal-pdf" src="${r.receiptFile.data}"></iframe>`;
-  } else {
-    c.innerHTML=`<p style="color:var(--muted);font-size:13px;padding:1rem 0">Preview unavailable. <a href="${r.receiptFile.data}" download="${esc(r.receiptFile.name)}" style="color:var(--accent)">Download</a></p>`;
-  }
+  if(r.receiptFile.type.startsWith('image/'))c.innerHTML=`<img class="rcpt-modal-img" src="${r.receiptFile.data}">`;
+  else if(r.receiptFile.type==='application/pdf')c.innerHTML=`<iframe class="rcpt-modal-pdf" src="${r.receiptFile.data}"></iframe>`;
+  else c.innerHTML=`<p style="color:var(--muted);font-size:13px;padding:1rem 0">Preview unavailable. <a href="${r.receiptFile.data}" download="${esc(r.receiptFile.name)}" style="color:var(--accent)">Download</a></p>`;
   document.getElementById('rcpt-modal').classList.add('open');
 }
 function closeModal(){document.getElementById('rcpt-modal').classList.remove('open');document.getElementById('rcpt-modal-content').innerHTML='';}
 
-// ── Mobile menu ───────────────────────────────────────────────────────────────
-function toggleMobileMenu(){
-  const menu=document.getElementById('mobile-menu');
-  menu.classList.toggle('open');
-}
-function closeMobileMenu(){
-  document.getElementById('mobile-menu').classList.remove('open');
-}
-// Close menu when tapping outside
-document.addEventListener('click',e=>{
-  const menu=document.getElementById('mobile-menu');
-  const btn=document.getElementById('hamburger-btn');
-  if(menu.classList.contains('open')&&!menu.contains(e.target)&&!btn.contains(e.target)){
-    menu.classList.remove('open');
-  }
-});
-function syncMobileMenu(hasData){
-  // Show/hide data-dependent menu items
-  ['mmenu-rules','mmenu-load','mmenu-save','mmenu-sep1'].forEach(id=>{
-    const el=document.getElementById(id);
-    if(el)el.style.display=hasData?'':'none';
-  });
-}
-function syncDriveMobileStatus(state,text){
-  const dot=document.getElementById('drive-dot-mobile');
-  const txt=document.getElementById('drive-status-text-mobile');
-  const wrap=document.getElementById('drive-status-mobile');
-  const signinBtn=document.getElementById('mmenu-drive');
-  const signoutBtn=document.getElementById('mmenu-signout');
-  if(dot&&txt&&wrap){
-    wrap.style.display='flex';
-    dot.className='drive-dot '+state;
-    txt.textContent=text;
-  }
-  if(signinBtn)signinBtn.style.display='none';
-  if(signoutBtn)signoutBtn.style.display='block';
-}
-
-// ── Google Drive Sync ─────────────────────────────────────────────────────────
-const CLIENT_ID='432426606260-hs07g9kdggjq0gq17tsmscuub2fv3325.apps.googleusercontent.com';
-const SCOPES='https://www.googleapis.com/auth/drive.appdata';
-const DRIVE_FILE_NAME='anz_tracker_session.json';
-let driveToken=null,driveFileId=null,driveSyncTimer=null,drivePollTimer=null,lastSavedAt=null;
-
-function driveSetStatus(state,text){
-  const wrap=document.getElementById('drive-status');
-  const dot=document.getElementById('drive-dot');
-  const txt=document.getElementById('drive-status-text');
-  wrap.classList.add('vis');dot.className='drive-dot '+state;txt.textContent=text;
-  syncDriveMobileStatus(state,text);
-}
-
-function driveSignIn(silent=false){
-  if(typeof google==='undefined'||!google.accounts){
-    if(silent){setTimeout(()=>driveSignIn(true),500);return;}
-    toast('⚠ Google library not loaded yet — try again');return;
-  }
-
-  let timeoutId=null;
-
-  const client=google.accounts.oauth2.initTokenClient({
-    client_id:CLIENT_ID,scope:SCOPES,
-    callback:(resp)=>{
-      if(timeoutId)clearTimeout(timeoutId);
-      if(resp.error){
-        showDriveSignInButton();
-        if(!silent)toast('⚠ Google sign-in failed: '+resp.error);
-        return;
-      }
-      driveToken=resp.access_token;
-      localStorage.setItem('drive_was_signed_in','true');
-      document.getElementById('btn-drive-signin').classList.remove('vis');
-      document.getElementById('btn-drive-signout').classList.add('vis');
-      const mSignin=document.getElementById('mmenu-drive');
-      const mSignout=document.getElementById('mmenu-signout');
-      if(mSignin)mSignin.style.display='none';
-      if(mSignout)mSignout.style.display='block';
-      driveSetStatus('syncing','Loading from Drive…');
-      driveLoadSession();
-    }
-  });
-
-  if(silent){
-    // Silent: no prompt, but add a 6-second timeout in case callback never fires
-    timeoutId=setTimeout(()=>{
-      showDriveSignInButton();
-    },6000);
-    client.requestAccessToken({prompt:''});
-  } else {
-    client.requestAccessToken();
-  }
-}
-
-function showDriveSignInButton(){
-  document.getElementById('drive-status').classList.remove('vis');
-  if(window.location.protocol==='https:'){
-    document.getElementById('btn-drive-signin').classList.add('vis');
-    const mBtn=document.getElementById('mmenu-drive');
-    if(mBtn)mBtn.style.display='block';
-  }
-  if(!allRows.length)checkAutoBackup();
-}
-
-function driveSignOut(){
-  if(driveToken)google.accounts.oauth2.revoke(driveToken,()=>{});
-  driveToken=null;driveFileId=null;lastSavedAt=null;
-  localStorage.removeItem('drive_was_signed_in');
-  if(driveSyncTimer)clearInterval(driveSyncTimer);
-  if(drivePollTimer)clearInterval(drivePollTimer);
-  document.getElementById('btn-drive-signin').classList.add('vis');
-  document.getElementById('btn-drive-signout').classList.remove('vis');
-  document.getElementById('drive-status').classList.remove('vis');
-  toast('Disconnected from Google Drive');
-}
-
-async function driveLoadSessionSilent(){
-  // Reload data from Drive without disrupting the UI
-  try{
-    const dl=await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
-      {headers:{Authorization:'Bearer '+driveToken}});
-    if(!dl.ok)return;
-    const d=await dl.json();
-    if(!d.rows||!Array.isArray(d.rows))return;
-    allRows=d.rows.map(r=>{
-      let dt=r.date;
-      if(typeof dt==='string'){const m=dt.match(/^(\d{4})-(\d{2})-(\d{2})/);dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(dt);}
-      return{...r,date:dt,bpType:r.bpType||'business',isDup:r.isDup||false,autoCat:r.autoCat||false};
-    });
-    if(d.rules&&Array.isArray(d.rules))rules=d.rules;
-    lastSavedAt=d.savedAt;
-    detectDuplicates();buildCatFilter();buildBulkCatSel();updateKPIs();renderTable();renderBAS();
-    const t=new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
-    driveSetStatus('synced','Updated from another device · '+t);
-    toast('↻ Data updated from another device');
-    startDriveSyncTimer(); // restart save timer after cross-device pull
-  }catch(e){driveSetStatus('error','Sync error');}
-}
-
-async function driveLoadSession(){
-  try{
-    driveSetStatus('syncing','Loading…');
-    const res=await fetch(
-      `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${DRIVE_FILE_NAME}'&fields=files(id,modifiedTime)`,
-      {headers:{Authorization:'Bearer '+driveToken}});
-    const data=await res.json();
-    if(!data.files||!data.files.length){
-      driveSetStatus('synced','Drive ready');
-      document.getElementById('btn-drive-signin').classList.remove('vis');
-      toast('✓ Connected to Google Drive — no previous session found');
-      startDriveSyncTimer();return;
-    }
-    driveFileId=data.files[0].id;
-    const dl=await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
-      {headers:{Authorization:'Bearer '+driveToken}});
-    if(!dl.ok)throw new Error('Download failed');
-    const d=await dl.json();
-    if(!d.rows||!Array.isArray(d.rows))throw new Error('Invalid data in Drive');
-    allRows=d.rows.map(r=>{
-      let dt=r.date;
-      if(typeof dt==='string'){const m=dt.match(/^(\d{4})-(\d{2})-(\d{2})/);dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(dt);}
-      return{...r,date:dt,bpType:r.bpType||'business',isDup:r.isDup||false,autoCat:r.autoCat||false};
-    });
-    if(d.rules&&Array.isArray(d.rules))rules=d.rules;
-    sessionName=d.sessionName||DRIVE_FILE_NAME;
-    detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();
-    const ago=Math.round((Date.now()-new Date(d.savedAt).getTime())/60000);
-    driveSetStatus('synced','Synced · '+(ago<1?'just now':ago+'m ago'));
-    toast('✓ Loaded from Google Drive — '+allRows.length+' transactions');
-    lastSavedAt=d.savedAt;
-    startDriveSyncTimer();
-    startDrivePollTimer();
-  }catch(e){driveSetStatus('error','Sync error');toast('⚠ Drive error: '+e.message);}
-}
-
-async function refreshDriveTokenIfNeeded(){
-  // Silently get a fresh token — GIS handles this internally if session is active
-  return new Promise(res=>{
-    try{
-      const client=google.accounts.oauth2.initTokenClient({
-        client_id:CLIENT_ID,scope:SCOPES,
-        callback:(resp)=>{
-          if(!resp.error&&resp.access_token){driveToken=resp.access_token;}
-          res();
-        }
-      });
-      client.requestAccessToken({prompt:''});
-    }catch(e){res();}
-  });
-}
-
-async function driveSaveSession(){
-  if(!driveToken||!allRows.length)return;
-  driveSetStatus('syncing','Saving…');
-  try{
-    const savedAt=new Date().toISOString(); // capture once so payload and lastSavedAt are identical
-    let rowsToSave=serializeRows(allRows);
-    let payload=JSON.stringify({version:3,savedAt,sessionName,rules,rows:rowsToSave});
-    // If payload exceeds 4MB, strip base64 receipt data (keeps filenames)
-    if(payload.length>4*1024*1024){
-      rowsToSave=rowsToSave.map(r=>r.receiptFile?{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,data:null,stripped:true}}:r);
-      payload=JSON.stringify({version:3,savedAt,sessionName,rules,rows:rowsToSave,receiptsStripped:true});
-    }
-    if(driveFileId){
-      const patchRes=await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`,{
-        method:'PATCH',headers:{Authorization:'Bearer '+driveToken,'Content-Type':'application/json'},body:payload});
-      if(patchRes.status===401){
-        // Token expired — refresh and retry once
-        await refreshDriveTokenIfNeeded();
-        const retry=await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`,{
-          method:'PATCH',headers:{Authorization:'Bearer '+driveToken,'Content-Type':'application/json'},body:payload});
-        if(!retry.ok)throw new Error('Save failed after token refresh ('+retry.status+')');
-      }else if(!patchRes.ok){
-        throw new Error('Save failed ('+patchRes.status+')');
-      }
-    }else{
-      const form=new FormData();
-      form.append('metadata',new Blob([JSON.stringify({name:DRIVE_FILE_NAME,parents:['appDataFolder']})],{type:'application/json'}));
-      form.append('file',new Blob([payload],{type:'application/json'}));
-      const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{
-        method:'POST',headers:{Authorization:'Bearer '+driveToken},body:form});
-      if(!r.ok)throw new Error('Create failed');
-      driveFileId=(await r.json()).id;
-    }
-    const t=new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
-    driveSetStatus('synced','Synced · '+t);
-    lastSavedAt=savedAt;
-    try{localStorage.setItem('anz_tracker_autosave',payload);}catch(e2){}
-  }catch(e){
-    driveSetStatus('error','Sync failed — saved locally');
-    const fallback={version:3,savedAt:new Date().toISOString(),sessionName,rules,rows:allRows.map(r=>r.receiptFile?{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,data:null,stripped:true}}:r).map(r=>({...r,date:dateToStr(r.date)}))};
-    try{localStorage.setItem('anz_tracker_autosave',JSON.stringify(fallback));}catch(e2){}
-  }
-}
-
-function startDriveSyncTimer(){
-  if(driveSyncTimer)clearInterval(driveSyncTimer);
-  driveSyncTimer=setInterval(()=>{if(driveToken&&allRows.length)driveSaveSession();},30000);
-}
-
-let drivePollRunning=false;
-function startDrivePollTimer(){
-  if(drivePollTimer)clearInterval(drivePollTimer);
-  drivePollTimer=setInterval(async()=>{
-    if(!driveToken||!driveFileId||drivePollRunning)return;
-    drivePollRunning=true;
-    try{
-      // Just fetch the file metadata (modifiedTime) — very lightweight
-      const res=await fetch(
-        `https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=modifiedTime`,
-        {headers:{Authorization:'Bearer '+driveToken}});
-      if(!res.ok)return;
-      const meta=await res.json();
-      const driveModified=meta.modifiedTime;
-      // If Drive is newer than what we last saved/loaded, another device updated it
-      if(lastSavedAt&&driveModified>lastSavedAt){
-        driveSetStatus('syncing','Updating from another device…');
-        await driveLoadSessionSilent();
-      }
-    }catch(e){/* network blip — ignore */}
-    finally{drivePollRunning=false;}
-  },60000); // check every 60 seconds
-}
-
-// ── Local auto-backup fallback ────────────────────────────────────────────────
+// ── Auto-backup to localStorage ───────────────────────────────────────────────
 function startAutoBackup(){
-  if(driveToken){startDriveSyncTimer();return;}
   if(autoBackupTimer)clearInterval(autoBackupTimer);
   autoBackupTimer=setInterval(()=>{
     if(!allRows.length)return;
-    const payload={version:3,savedAt:new Date().toISOString(),sessionName,rules,
-      rows:serializeRows(allRows)};
     try{
-      localStorage.setItem('anz_tracker_autosave',JSON.stringify(payload));
-    }catch(e){
-      if(e.name==='QuotaExceededError'||e.name==='NS_ERROR_DOM_QUOTA_REACHED'||(e.message&&e.message.toLowerCase().includes('quota'))){
-        // Save lightweight version without base64 receipt data
-        const stripped={...payload,rows:payload.rows.map(r=>r.receiptFile?{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,data:null,stripped:true}}:r)};
-        try{localStorage.setItem('anz_tracker_autosave',JSON.stringify(stripped));}catch(e2){}
-      }
-    }
+      const payload=JSON.stringify({version:3,savedAt:new Date().toISOString(),sessionName,
+        rows:allRows.map(r=>({...r,date:r.date instanceof Date?r.date.toISOString():r.date})),
+        rules});
+      localStorage.setItem('anz_tracker_autosave',payload);
+      const dot=document.getElementById('backup-dot');
+      dot.classList.add('flash');setTimeout(()=>dot.classList.remove('flash'),1200);
+    }catch(e){/* quota exceeded – silently skip */}
   },30000);
 }
 
@@ -1549,14 +997,22 @@ function checkAutoBackup(){
     const d=JSON.parse(saved);
     if(!d.rows||!d.rows.length)return;
     const age=Math.round((Date.now()-new Date(d.savedAt).getTime())/60000);
-    if(confirm(`Local backup found from ${age} minute${age!==1?'s':''} ago (${d.rows.length} transactions).\nRestore it?`)){
-      allRows=d.rows.map(r=>{let dt=r.date;if(typeof dt==='string'){const m=dt.match(/^(\d{4})-(\d{2})-(\d{2})/);dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(dt);}return{...r,date:dt,bpType:r.bpType||'business',isDup:r.isDup||false,autoCat:r.autoCat||false};});
-      if(d.rules&&Array.isArray(d.rules))rules=d.rules;
-      sessionName=d.sessionName||'restored';
-      detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();startAutoBackup();
-      toast('✓ Local backup restored — '+allRows.length+' transactions');
+    if(confirm(`Auto-backup found from ${age} minute${age!==1?'s':''} ago (${d.rows.length} transactions).\n\nRestore it?`)){
+      restoreFromBackup(d);
     }
   }catch(e){}
+}
+
+function restoreFromBackup(d){
+  allRows=d.rows.map(r=>{
+    let dt=r.date;
+    if(typeof dt==='string'){const m=dt.match(/^(\d{4})-(\d{2})-(\d{2})/);dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(dt);}
+    return{...r,date:dt,bpType:r.bpType||'business',isDup:r.isDup||false,autoCat:r.autoCat||false};
+  });
+  if(d.rules&&Array.isArray(d.rules))rules=d.rules;
+  sessionName=d.sessionName||'auto-restored';
+  detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();startAutoBackup();
+  toast('✓ Auto-backup restored — '+allRows.length+' transactions');
 }
 
 // ── App state ─────────────────────────────────────────────────────────────────
@@ -1564,17 +1020,10 @@ function showApp(){
   document.getElementById('upload-section').style.display='none';
   document.getElementById('app-section').style.display='block';
   ['btn-rules','btn-load','btn-save','btn-csv','btn-xl','btn-newfile'].forEach(id=>document.getElementById(id).style.display='inline-block');
-  syncMobileMenu(true);
 }
 function resetAll(){
-  const msg=driveToken
-    ?'Start a new file?\n\nYour data is safely saved in Google Drive and can be reloaded at any time.'
-    :'Start a new file?\n\nMake sure you have saved your session first — any unsaved changes will be lost.';
-  if(!confirm(msg))return;
   if(autoBackupTimer)clearInterval(autoBackupTimer);
-  if(driveSyncTimer)clearInterval(driveSyncTimer);
-  if(drivePollTimer)clearInterval(drivePollTimer);
-  allRows=[];selectedIds.clear();showDupsOnly=false;dupDismissed=false;autocatDismissed=false;autoCatSuggestions=[];bulkItems=[];
+  allRows=[];selectedIds.clear();showDupsOnly=false;dupDismissed=false;autocatDismissed=false;autoCatSuggestions=[];
   document.getElementById('upload-section').style.display='flex';
   document.getElementById('app-section').style.display='none';
   ['btn-rules','btn-load','btn-save','btn-csv','btn-xl','btn-newfile'].forEach(id=>document.getElementById(id).style.display='none');
@@ -1583,8 +1032,6 @@ function resetAll(){
   document.getElementById('dup-banner').classList.remove('visible');
   document.getElementById('autocat-banner').classList.remove('visible');
   localStorage.removeItem('anz_tracker_autosave');
-  if(driveToken){driveSetStatus('synced','Drive ready');}
-  closeMobileMenu();syncMobileMenu(false);
 }
 function showError(msg,inApp){const e=document.getElementById(inApp?'error-banner-app':'error-banner');e.textContent='⚠ '+msg;e.style.display='block';}
 function buildCatFilter(){
@@ -1597,17 +1044,13 @@ function buildCatFilter(){
 // ── Session save/load ─────────────────────────────────────────────────────────
 function saveSession(){
   if(!allRows.length)return;
-  if(driveToken){driveSaveSession();toast('✓ Saving to Google Drive…');return;}
   const payload={version:3,savedAt:new Date().toISOString(),sessionName,rules,
-    rows:serializeRows(allRows)};
-  const blob1=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
-  const url1=URL.createObjectURL(blob1);
+    rows:allRows.map(r=>({...r,date:r.date instanceof Date?r.date.toISOString():r.date}))};
   const a=document.createElement('a');
-  a.href=url1;
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));
   a.download='ANZ_Session_'+new Date().toISOString().slice(0,10)+'.json';
   a.click();
-  setTimeout(()=>URL.revokeObjectURL(url1),5000);
-  toast('✓ Session saved');
+  toast('✓ Session saved — store in Google Drive, Dropbox or iCloud');
 }
 function loadSession(file){
   if(!file)return;
@@ -1623,7 +1066,6 @@ function loadSession(file){
       });
       if(d.rules&&Array.isArray(d.rules))rules=d.rules;
       sessionName=d.sessionName||file.name.replace('.json','');
-      dupDismissed=false;autocatDismissed=false;showDupsOnly=false;selectedIds.clear();
       detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();startAutoBackup();
       toast('✓ Session restored — '+allRows.length+' transactions');
     }catch(err){showError('Could not load session: '+err.message,false);}
@@ -1642,20 +1084,16 @@ function exportCSV(){
     lines.push([fmtDate(r.date),`"${r.description.replace(/"/g,'""')}"`,r.amount.toFixed(2),
       r.isDebit?'Debit':'Credit',biz?'Business':'Personal',
       r.isDebit?r.gstIncluded:'N/A',r.isDebit&&biz?r.gstAmt.toFixed(2):'0.00',
-      net,`"${r.category}"`,r.receiptFile?`"Yes — ${r.receiptFile.name.replace(/"/g,'""')}"`:r.receipt,`"${(r.notes||'').replace(/"/g,'""')}"`].join(','));
+      net,`"${r.category}"`,r.receipt,`"${(r.notes||'').replace(/"/g,'""')}"`].join(','));
   });
-  const blobCsv=new Blob([lines.join('\n')],{type:'text/csv'});
-  const urlCsv=URL.createObjectURL(blobCsv);
   const a=document.createElement('a');
-  a.href=urlCsv;a.download='anz_purchases.csv';a.click();
-  setTimeout(()=>URL.revokeObjectURL(urlCsv),5000);
+  a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));
+  a.download='anz_purchases.csv';a.click();
 }
 
 // ── Export Excel ──────────────────────────────────────────────────────────────
 function exportExcel(){
-  // Export filtered rows (same as CSV export — respects active filters)
-  const visibleRows=getFiltered();
-  const bizRows=visibleRows.filter(r=>r.bpType==='business');
+  const bizRows=allRows.filter(r=>r.bpType==='business');
   const wb=XLSX.utils.book_new();
   const hS={font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10},fill:{fgColor:{rgb:'002E5D'}},alignment:{horizontal:'center',vertical:'center',wrapText:true}};
   const tealH={font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10},fill:{fgColor:{rgb:'007B8A'}},alignment:{horizontal:'center'}};
@@ -1663,14 +1101,14 @@ function exportExcel(){
   // Transactions
   const txH=['Date','Description','Amount','Type','B/P','GST Inc.','GST Amt','Net (ex GST)','Category','Receipt','Notes'];
   const txD=[txH];
-  visibleRows.forEach(r=>{
+  allRows.forEach(r=>{
     const biz=r.bpType==='business';
     const net=r.isDebit&&biz?+(r.amount-r.gstAmt).toFixed(2):+r.amount.toFixed(2);
     txD.push([fmtDate(r.date),r.description+(r.isDup?' [DUP?]':''),r.isDebit?+r.amount.toFixed(2):0,
       r.isDebit?'Debit':'Credit',biz?'Business':'Personal',
       r.isDebit?(r.gstIncluded==='yes'?'Yes':'No'):'N/A',
       r.isDebit&&biz?+r.gstAmt.toFixed(2):0,net,
-      r.category||'',r.receiptFile?'Yes — '+r.receiptFile.name.replace(/[,\n\r]/g,' '):r.receipt,r.notes||'']);
+      r.category||'',r.receiptFile?'Yes — '+r.receiptFile.name:r.receipt,r.notes||'']);
   });
   const tA=+bizRows.filter(r=>r.isDebit).reduce((s,r)=>s+r.amount,0).toFixed(2);
   const tG=+bizRows.filter(r=>r.isDebit&&r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);
@@ -1725,474 +1163,13 @@ function exportExcel(){
   toast('✓ Excel downloaded — Transactions · BAS Summary · By Category');
 }
 
-// ── Debug Log ─────────────────────────────────────────────────────────────────
-const debugLogs=[];
-function dbg(msg,data){
-  const ts=new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  const entry={ts,msg,data};
-  debugLogs.push(entry);
-  console.log(`[${ts}] ${msg}`,data||'');
-  // Update log panel if open
-  const panel=document.getElementById('debug-panel-body');
-  if(panel){
-    const line=document.createElement('div');
-    line.style.cssText='padding:3px 0;border-bottom:1px solid #f0f0f0;font-size:11px;font-family:monospace;';
-    line.innerHTML=`<span style="color:#888">[${ts}]</span> <span style="color:#1a2e3b">${msg}</span>`+(data?` <span style="color:#5a7a8a">${typeof data==='object'?JSON.stringify(data):data}</span>`:'');
-    panel.insertBefore(line,panel.firstChild);
-  }
-}
-
-function openDebugPanel(){
-  const m=document.getElementById('debug-modal');
-  m.style.display='flex';
-}
-function closeDebugPanel(){
-  document.getElementById('debug-modal').style.display='none';
-}
-function copyDebugLogs(){
-  const text=debugLogs.map(l=>`[${l.ts}] ${l.msg}${l.data?' '+JSON.stringify(l.data):''}`).join('\n');
-  navigator.clipboard.writeText(text).then(()=>toast('✓ Logs copied to clipboard'));
-}
-
-// ── Bulk Receipt Upload ───────────────────────────────────────────────────────
-// PDF.js loaded lazily only if fast extraction fails
-let pdfJsReady=false;
-const PDFJS_WORKER='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-function loadPdfJs(){
-  return new Promise(res=>{
-    if(typeof pdfjsLib!=='undefined'){
-      pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS_WORKER;
-      pdfJsReady=true;res();return;
-    }
-    const s=document.createElement('script');
-    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    s.onload=()=>{pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS_WORKER;pdfJsReady=true;res();};
-    s.onerror=()=>res();
-    document.head.appendChild(s);
-  });
-}
-
-let bulkItems=[]; // {file, name, type, dataUrl, parsedDate, parsedAmount, matchedIds:[], assignedId, status}
-
-function openBulkRcpt(){
-  document.getElementById('bulk-rcpt-modal').classList.add('open');
-  if(bulkItems.length)renderBulkResults();
-}
-function closeBulkRcpt(){document.getElementById('bulk-rcpt-modal').classList.remove('open');}
-
-function bulkBarDragOver(e){e.preventDefault();document.getElementById('bulk-rcpt-bar').classList.add('drag-active');}
-function bulkBarDragLeave(){document.getElementById('bulk-rcpt-bar').classList.remove('drag-active');}
-function bulkBarDrop(e){
-  e.preventDefault();bulkBarDragLeave();
-  openBulkRcpt();
-  setTimeout(()=>processBulkFiles(e.dataTransfer.files),200);
-}
-function brDropOver(e){e.preventDefault();document.getElementById('br-drop').classList.add('drag-active');}
-function brDropLeave(){document.getElementById('br-drop').classList.remove('drag-active');}
-function brDropFiles(e){e.preventDefault();brDropLeave();processBulkFiles(e.dataTransfer.files);}
-
-async function processBulkFiles(fileList){
-  if(!fileList||!fileList.length)return;
-  dbg('processBulkFiles start',{count:fileList.length,files:Array.from(fileList).map(f=>f.name)});
-
-  // Open modal immediately so user sees progress
-  document.getElementById('bulk-rcpt-modal').classList.add('open');
-  document.getElementById('br-body').innerHTML=`<div class="br-processing"><div class="br-spinner"></div><div>Processing ${fileList.length} file${fileList.length>1?'s':''}…</div></div>`;
-  document.getElementById('bulk-file-input').value='';
-
-  // Yield to browser so the spinner actually paints before heavy processing begins
-  await new Promise(res=>setTimeout(res,50));
-
-  // Process all files in parallel — each file isolated so one failure doesn't kill others
-  const validFiles=Array.from(fileList).filter(file=>{
-    const isPdf=file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf');
-    const ok=isPdf||file.type.startsWith('image/');
-    if(!ok)dbg('skipped file — not PDF or image',{name:file.name,type:file.type});
-    return ok;
-  });
-
-  const newItems=(await Promise.all(validFiles.map(async file=>{
-    dbg('processing file',{name:file.name,size:file.size,type:file.type});
-    const isPdf=file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf');
-    let dataUrl;
-    try{
-      dataUrl=await readFileAsDataUrl(file);
-      dbg('file read as dataUrl',{name:file.name,dataUrlLength:dataUrl.length});
-    }catch(e){
-      dbg('readFileAsDataUrl failed',{name:file.name,error:e.message});
-      return null; // skip this file — don't crash others
-    }
-    const item={file,name:file.name,type:isPdf?'pdf':'image',dataUrl,
-      parsedDate:null,parsedAmount:null,matchedIds:[],assignedId:null,status:'pending'};
-    if(isPdf){
-      try{
-        dbg('starting PDF text extraction',{name:file.name});
-        const text=await extractPdfText(dataUrl,file.name);
-        dbg('PDF extraction complete',{name:file.name,textLength:text?.length});
-        item.parsedAmount=extractAmount(text);
-        item.parsedDate=extractDateFromText(text);
-        dbg('extracted data',{name:file.name,amount:item.parsedAmount,date:item.parsedDate?dateToStr(item.parsedDate):null});
-      }catch(e){
-        dbg('PDF extraction error',{name:file.name,error:e.message});
-        item.status='unmatched';
-      }
-    }
-    dbg('file processed',{name:file.name,status:item.status});
-    return item;
-  }))).filter(Boolean); // remove nulls from failed reads
-
-  dbg('all files processed',{count:newItems.length,skipped:validFiles.length-newItems.length});
-
-  // Safety net — if something went totally wrong, show error instead of frozen spinner
-  if(newItems.length===0&&validFiles.length>0){
-    dbg('no files processed — showing error');
-    document.getElementById('br-body').innerHTML='<div style="padding:1.5rem;color:var(--red);font-size:13px;">⚠ Could not read any files. Check the files are valid PDFs or images and try again.</div>';
-    return;
-  }
-
-  // Merge with existing (avoid duplicates by name)
-  const existingNames=new Set(bulkItems.map(i=>i.name));
-  newItems.forEach(i=>{if(!existingNames.has(i.name))bulkItems.push(i);});
-
-  // Match all items
-  matchAllItems();
-  dbg('matching complete',{matched:bulkItems.filter(i=>i.status==='matched').length,ambiguous:bulkItems.filter(i=>i.status==='ambiguous').length,unmatched:bulkItems.filter(i=>i.status==='unmatched').length});
-  renderBulkResults();
-  updateBulkBarCount();
-}
-
-function readFileAsDataUrl(file){
-  return new Promise((res,rej)=>{
-    const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsDataURL(file);
-  });
-}
-
-async function extractPdfText(dataUrl,filename=''){
-  // FAST PATH: extract raw text from PDF binary without PDF.js
-  dbg('extractPdfRaw start',{filename});
-  const rawText=extractPdfRaw(dataUrl);
-  dbg('extractPdfRaw done',{filename,textLength:rawText.length,sample:rawText.slice(0,120)});
-  const amt=extractAmount(rawText);
-  const dt=extractDateFromText(rawText);
-  dbg('fast path result',{filename,amount:amt,date:dt?dateToStr(dt):null});
-  if(amt||dt){dbg('fast path succeeded',{filename});return rawText;}
-
-  // FALLBACK: load PDF.js for scanned or complex PDFs
-  dbg('fast path failed — falling back to PDF.js',{filename});
-  try{
-    await loadPdfJs();
-    dbg('PDF.js loaded',{ready:pdfJsReady,filename});
-    if(!pdfJsReady){dbg('PDF.js not ready — returning raw',{filename});return rawText;}
-    const base64=dataUrl.split(',')[1];
-    const binary=atob(base64);
-    const bytes=new Uint8Array(binary.length);
-    for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-    const timeout=new Promise((_,rej)=>setTimeout(()=>{dbg('PDF.js timeout',{filename});rej(new Error('timeout'));},6000));
-    const parse=(async()=>{
-      dbg('PDF.js getDocument start',{filename});
-      const pdf=await pdfjsLib.getDocument({data:bytes,verbosity:0}).promise;
-      dbg('PDF.js document loaded',{filename,pages:pdf.numPages});
-      let text='';
-      for(let i=1;i<=Math.min(pdf.numPages,2);i++){
-        const page=await pdf.getPage(i);
-        const tc=await page.getTextContent();
-        text+=tc.items.map(s=>s.str).join(' ')+'\n';
-        dbg(`PDF.js page ${i} done`,{filename,charsAdded:tc.items.length});
-      }
-      return text;
-    })();
-    const result=await Promise.race([parse,timeout]);
-    dbg('PDF.js extraction done',{filename,textLength:result?.length});
-    return result;
-  }catch(e){dbg('PDF.js fallback error',{filename,error:e.message});return rawText;}
-}
-
-function extractPdfRaw(dataUrl){
-  const base64=dataUrl.split(',')[1];
-  const binary=atob(base64);
-  let text='';
-
-  // Method 1: parenthesised string literals (standard PDF text encoding)
-  // Only keep strings that contain meaningful printable text (not binary instructions)
-  const parenRe=/\(([^)]{1,200})\)/g;
-  let m;
-  while((m=parenRe.exec(binary))!==null){
-    const s=m[1].replace(/\\[nrt]/g,' ').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\xff]/g,'').trim();
-    // Skip strings that are mostly non-printable or look like PDF operators
-    const printable=s.replace(/[^\x20-\x7e]/g,'').length;
-    if(printable>2&&printable/Math.max(s.length,1)>0.7)text+=s+' ';
-  }
-
-  // Method 2: angle-bracket hex strings — skip large blobs (images/fonts)
-  const hexRe=/<([0-9a-fA-F]{4,})>/g;
-  while((m=hexRe.exec(binary))!==null){
-    const hex=m[1];
-    if(hex.length>1500)continue; // skip — embedded image or font data, not text
-    try{
-      let s='';
-      for(let i=0;i<hex.length-1;i+=2)s+=String.fromCharCode(parseInt(hex.slice(i,i+2),16));
-      s=s.replace(/[\x00-\x1f]/g,' ').trim();
-      if(s.length>1)text+=s+' ';
-    }catch(e){}
-  }
-
-  return text;
-}
-
-function extractAmount(text){
-  const patterns=[
-    /(?:total amount payable|total amount due|amount payable|total paid|total due|amount paid|grand total|to pay|you paid)[^\d$]*\$?\s*([\d,]+\.[\d]{2})/gi,
-    /(?:total|amount)[^\d$\n]{0,20}\$\s*([\d,]+\.[\d]{2})/gi,
-    /\$\s*([\d,]+\.[\d]{2})\s*(?:total|paid|due|payable)/gi,
-  ];
-  const amounts=[];
-  for(const pat of patterns){
-    let m;const re=new RegExp(pat.source,pat.flags);
-    while((m=re.exec(text))!==null){
-      const val=parseFloat(m[1].replace(/,/g,''));
-      if(val>0.50&&val<50000)amounts.push(val);
-    }
-  }
-  if(!amounts.length)return null;
-  const freq={};let best=null,bestCount=0;
-  amounts.forEach(a=>{freq[a]=(freq[a]||0)+1;if(freq[a]>bestCount){bestCount=freq[a];best=a;}});
-  return best;
-}
-
-function extractDateFromText(text){
-  const months={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,
-    january:1,february:2,march:3,april:4,june:6,july:7,august:8,september:9,october:10,november:11,december:12};
-  const patterns=[
-    // DD Month YYYY — e.g. "17 May 2026" (AusPost, Xero)
-    /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{4})/i,
-    // DD/MM/YYYY or DD-MM-YYYY
-    /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/,
-    // YYYY-MM-DD (ISO)
-    /(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/,
-    // Month DD, YYYY — e.g. "May 17, 2026"
-    /(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2}),?\s+(\d{4})/i,
-  ];
-  for(let pi=0;pi<patterns.length;pi++){
-    const m=text.match(patterns[pi]);
-    if(m){
-      if(pi===0){
-        // DD Month YYYY — e.g. "17 May 2026"
-        const mo=months[m[2].toLowerCase()];
-        if(mo)return new Date(+m[3],mo-1,+m[1]);
-      }else if(pi===1){
-        // DD/MM/YYYY
-        return new Date(+m[3],+m[2]-1,+m[1]);
-      }else if(pi===2){
-        // YYYY-MM-DD
-        return new Date(+m[1],+m[2]-1,+m[3]);
-      }else if(pi===3){
-        // Month DD, YYYY
-        const mo=months[m[1].toLowerCase()];
-        if(mo)return new Date(+m[3],mo-1,+m[2]);
-      }
-    }
-  }
-  return null;
-}
-
-function matchAllItems(){
-  bulkItems.forEach(item=>{
-    if(item.isManual)return; // respect user's manual assignment
-    item.matchedIds=[];item.assignedId=null;
-    if(item.type==='image'){item.status='image';return;}
-    if(!item.parsedAmount&&!item.parsedDate){item.status='unmatched';return;}
-
-    const candidates=allRows.filter(r=>{
-      if(!r.isDebit)return false;
-      if(r.receiptFile)return false; // already has receipt
-      let amtMatch=true,dateMatch=true;
-      if(item.parsedAmount!==null)amtMatch=Math.abs(r.amount-item.parsedAmount)<0.015;
-      if(item.parsedDate!==null&&r.date instanceof Date){
-        // Allow ±1 day tolerance — invoice date sometimes differs from ANZ debit date
-        const diff=Math.abs(r.date.getTime()-item.parsedDate.getTime());
-        dateMatch=diff<=86400000*7; // 7 day tolerance — AusPost invoices can be up to a week after debit
-      }
-      return amtMatch&&dateMatch;
-    });
-
-    item.matchedIds=candidates.map(r=>r.id);
-    if(candidates.length===1){
-      item.assignedId=candidates[0].id;
-      item.status='matched';
-    }else if(candidates.length>1){
-      // Auto-assign in sequence: pick first unassigned in this group
-      const alreadyAssigned=new Set(bulkItems.filter(i=>i!==item&&i.assignedId).map(i=>i.assignedId));
-      const firstFree=candidates.find(r=>!alreadyAssigned.has(r.id));
-      if(firstFree){item.assignedId=firstFree.id;item.status='matched';}
-      else{item.status='ambiguous';}
-    }else{
-      item.status='unmatched';
-    }
-  });
-}
-
-function renderBulkResults(){
-  if(!bulkItems.length){
-    document.getElementById('br-body').innerHTML='<div style="text-align:center;padding:1.5rem;color:var(--muted);font-size:13px;">Upload receipts above to start matching</div>';
-    document.getElementById('br-apply-btn').disabled=true;
-    document.getElementById('br-footer-note').textContent='';
-    return;
-  }
-
-  const matched=bulkItems.filter(i=>i.status==='matched');
-  const ambiguous=bulkItems.filter(i=>i.status==='ambiguous');
-  const unmatched=bulkItems.filter(i=>i.status==='unmatched');
-  const images=bulkItems.filter(i=>i.status==='image');
-
-  let html='';
-  // Stats
-  html+=`<div class="br-stats">
-    ${matched.length?`<span class="br-stat matched">✓ ${matched.length} matched</span>`:''}
-    ${ambiguous.length?`<span class="br-stat ambiguous">⚠ ${ambiguous.length} need assignment</span>`:''}
-    ${images.length?`<span class="br-stat image">🖼 ${images.length} photos — assign manually</span>`:''}
-    ${unmatched.length?`<span class="br-stat unmatched">— ${unmatched.length} no match found</span>`:''}
-  </div>`;
-
-  const renderItem=(item,idx)=>{
-    const thumb=item.type==='image'
-      ?`<img class="br-thumb" src="${item.dataUrl}">`
-      :`<div class="br-thumb-pdf">📄</div>`;
-    const detail=item.parsedDate||item.parsedAmount
-      ?`${item.parsedDate?fmtDate(item.parsedDate):''}${item.parsedDate&&item.parsedAmount?' · ':''}${item.parsedAmount?fmtAUD(item.parsedAmount):''}`
-      :'No date/amount extracted';
-
-    let matchInfo='',assignSel='';
-    if(item.status==='matched'&&item.assignedId){
-      const r=allRows.find(r=>r.id===item.assignedId);
-      if(r){
-        matchInfo=`<div class="br-item-match">→ ${fmtDate(r.date)} · ${fmtAUD(r.amount)} · ${esc(r.description||'').slice(0,40)}</div>`;
-      }else{
-        matchInfo=`<div class="br-item-warn">Assigned transaction no longer exists — please reassign</div>`;
-        item.assignedId=null;item.status='unmatched';
-      }
-    }
-    if(item.status==='ambiguous'||item.status==='matched'||(item.status==='image')){
-      // Show assignment dropdown for ambiguous, or re-assign for matched/image
-      const pool=item.matchedIds.length>0
-        ?allRows.filter(r=>item.matchedIds.includes(r.id))
-        :allRows.filter(r=>r.isDebit&&!r.receiptFile);
-      const opts=pool.map(r=>`<option value="${r.id}" ${item.assignedId===r.id?'selected':''}>${fmtDate(r.date)} · ${fmtAUD(r.amount)} · ${esc(r.description.slice(0,35))}</option>`).join('');
-      assignSel=`<select class="br-assign-sel" onchange="bulkAssign(${idx},this.value)">
-        <option value="">— Select transaction —</option>${opts}
-        <option value="__unassign__" ${!item.assignedId?'selected':''}>Don't assign this receipt</option>
-      </select>`;
-    }
-    if(item.status==='unmatched'){
-      const opts=allRows.filter(r=>r.isDebit&&!r.receiptFile)
-        .slice(0,50)
-        .map(r=>`<option value="${r.id}">${fmtDate(r.date)} · ${fmtAUD(r.amount)} · ${esc(r.description.slice(0,35))}</option>`).join('');
-      assignSel=`<select class="br-assign-sel" onchange="bulkAssign(${idx},this.value)">
-        <option value="">— Manually select transaction —</option>${opts}
-      </select>`;
-    }
-
-    const statusIcon=item.status==='matched'?'✅':item.status==='ambiguous'?'⚠️':item.status==='image'?'🖼️':'❓';
-    const warnText=item.status==='ambiguous'?`<div class="br-item-warn">Multiple transactions match — select the correct one below</div>`:
-      item.status==='unmatched'?`<div class="br-item-warn">No matching transaction found — assign manually or leave unassigned</div>`:
-      item.status==='image'?`<div class="br-item-warn">Photo — assign to a transaction manually</div>`:'';
-
-    return`<div class="br-item ${item.status==='image'?'image-item':item.status}">
-      ${thumb}
-      <div class="br-item-info">
-        <div class="br-item-name">${esc(item.name)}</div>
-        <div class="br-item-detail">${detail}</div>
-        ${warnText}${matchInfo}${assignSel}
-      </div>
-      <div class="br-status-icon">${statusIcon}</div>
-    </div>`;
-  };
-
-  if(matched.length){html+=`<div class="br-section-label">Auto-matched (${matched.length})</div>`;matched.forEach((item,_)=>html+=renderItem(item,bulkItems.indexOf(item)));}
-  if(ambiguous.length){html+=`<div class="br-section-label">Need your help (${ambiguous.length})</div>`;ambiguous.forEach(item=>html+=renderItem(item,bulkItems.indexOf(item)));}
-  if(images.length){html+=`<div class="br-section-label">Photos — assign manually (${images.length})</div>`;images.forEach(item=>html+=renderItem(item,bulkItems.indexOf(item)));}
-  if(unmatched.length){html+=`<div class="br-section-label">No match found (${unmatched.length})</div>`;unmatched.forEach(item=>html+=renderItem(item,bulkItems.indexOf(item)));}
-
-  document.getElementById('br-body').innerHTML=html;
-  const assignable=bulkItems.filter(i=>i.assignedId).length;
-  document.getElementById('br-apply-btn').disabled=assignable===0;
-  document.getElementById('br-footer-note').textContent=assignable>0?`${assignable} receipt${assignable>1?'s':''} ready to apply`:'';
-}
-
-function bulkAssign(idx,val){
-  if(val==='__unassign__'){
-    bulkItems[idx].assignedId=null;
-    bulkItems[idx].isManual=true;
-    bulkItems[idx].status=bulkItems[idx].type==='image'?'image':'unmatched';
-  }else if(val){
-    bulkItems[idx].assignedId=val;
-    bulkItems[idx].isManual=true;
-    bulkItems[idx].status='matched'; // show match info in UI
-  }else{
-    bulkItems[idx].assignedId=null;
-    bulkItems[idx].isManual=false;
-  }
-  matchAllItems(); // re-run for non-manual items only
-  renderBulkResults();
-}
-
-function applyBulkReceipts(){
-  let count=0;
-  bulkItems.forEach(item=>{
-    if(!item.assignedId)return;
-    const r=allRows.find(r=>r.id===item.assignedId);
-    if(!r)return;
-    r.receiptFile={name:item.name,type:item.type==='pdf'?'application/pdf':item.file.type,data:item.dataUrl};
-    r.receipt='Yes';
-    count++;
-  });
-  // Remove applied items; keep unassigned ones in queue for next attempt
-  bulkItems=bulkItems.filter(i=>!i.assignedId||!allRows.find(r=>r.id===i.assignedId)?.receiptFile);
-  closeBulkRcpt();
-  detectDuplicates(); // clear dup flags for rows that now have receipts
-  renderTable();updateBulkBarCount();
-  if(driveToken)driveSaveSession();
-  toast(`✓ ${count} receipt${count!==1?'s':''} attached to transactions`);
-}
-
-function updateBulkBarCount(){
-  const n=bulkItems.length;
-  const badge=document.getElementById('bulk-rcpt-count');
-  if(n>0){badge.style.display='';badge.textContent=n+' in queue';}
-  else{badge.style.display='none';}
-}
 // ── Init ──────────────────────────────────────────────────────────────────────
 buildBulkCatSel();
 updatePeriodLabels();
+// Check for auto-backup on page load
 window.addEventListener('load',()=>{
-  const wasSigned=localStorage.getItem('drive_was_signed_in')==='true';
-  if(window.location.protocol==='https:'){
-    if(wasSigned){
-      driveSetStatus('syncing','Reconnecting…');
-      // Poll until GIS library is ready, then attempt silent sign-in
-      waitForGIS(()=>driveSignIn(true));
-    } else {
-      document.getElementById('btn-drive-signin').classList.add('vis');
-      const mBtn=document.getElementById('mmenu-drive');
-      if(mBtn)mBtn.style.display='block';
-    }
-  }
-  if(!wasSigned&&!allRows.length)checkAutoBackup();
+  if(!allRows.length)checkAutoBackup();
 });
-
-function waitForGIS(callback,attempts=0){
-  if(typeof google!=='undefined'&&google.accounts&&google.accounts.oauth2){
-    callback();
-  } else if(attempts<20){
-    setTimeout(()=>waitForGIS(callback,attempts+1),250); // retry every 250ms, up to 5s
-  } else {
-    // GIS never loaded (offline/blocked) — show manual button
-    document.getElementById('drive-status').classList.remove('vis');
-    document.getElementById('btn-drive-signin').classList.add('vis');
-    const mBtn=document.getElementById('mmenu-drive');
-    if(mBtn)mBtn.style.display='block';
-    if(!allRows.length)checkAutoBackup();
-  }
-}
 </script>
 </body>
 </html>
