@@ -352,7 +352,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.4);letter-spacing:0.04em;padding-left:2px;">v2.8</span>
+    <span style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.4);letter-spacing:0.04em;padding-left:2px;">v2.9</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -1824,18 +1824,21 @@ function brDropFiles(e){e.preventDefault();brDropLeave();processBulkFiles(e.data
 
 async function processBulkFiles(fileList){
   if(!fileList||!fileList.length)return;
-  dbg('processBulkFiles start',{count:fileList.length,files:Array.from(fileList).map(f=>f.name)});
+  // Convert to a real Array IMMEDIATELY before anything else touches the input
+  // Setting input.value='' later clears the live FileList reference — we must snapshot first
+  const filesArray=Array.from(fileList);
+  dbg('processBulkFiles start',{count:filesArray.length,files:filesArray.map(f=>f.name)});
 
   // Open modal immediately so user sees progress
   document.getElementById('bulk-rcpt-modal').classList.add('open');
-  document.getElementById('br-body').innerHTML=`<div class="br-processing"><div class="br-spinner"></div><div>Processing ${fileList.length} file${fileList.length>1?'s':''}…</div></div>`;
-  document.getElementById('bulk-file-input').value='';
+  document.getElementById('br-body').innerHTML=`<div class="br-processing"><div class="br-spinner"></div><div>Processing ${filesArray.length} file${filesArray.length>1?'s':''}…</div></div>`;
+  document.getElementById('bulk-file-input').value=''; // safe to clear now — we have filesArray
 
   // Yield to browser so the spinner actually paints before heavy processing begins
   await new Promise(res=>setTimeout(res,50));
 
   // Process all files in parallel — each file isolated so one failure doesn't kill others
-  const validFiles=Array.from(fileList).filter(file=>{
+  const validFiles=filesArray.filter(file=>{
     const isPdf=file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf');
     const ok=isPdf||file.type.startsWith('image/');
     if(!ok)dbg('skipped file — not PDF or image',{name:file.name,type:file.type});
