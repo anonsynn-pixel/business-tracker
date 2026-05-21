@@ -2,9 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ANZ Business Purchase Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ANZ Business Tracker</title>
+<meta name="description" content="Business purchase tracker with ANZ bank import, receipt management and BAS summary">
+<meta name="theme-color" content="#002e5d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Biz Tracker">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23002e5d'/%3E%3Crect x='15' y='35' width='70' height='45' rx='8' fill='none' stroke='%2300a3ad' stroke-width='6'/%3E%3Cpath d='M15 50h70' stroke='%2300a3ad' stroke-width='6'/%3E%3C/svg%3E">
+<link id="pwa-manifest" rel="manifest">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
@@ -30,14 +38,29 @@ header{background:var(--navy);padding:0 1.5rem;display:flex;align-items:center;j
 .hbtn-save:hover{background:var(--teal);}
 .hbtn-green{background:var(--green);color:#fff;}
 .hbtn-green:hover{background:#155f44;}
+.hbtn-purple{background:#8e44ad;color:#fff;}
+.hbtn-purple:hover{background:#6c3483;}
+/* Merchant cleanup */
+.desc-original{font-size:10px;color:var(--muted);font-family:var(--mono);display:block;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
 /* ── Toast ── */
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--navy);color:#fff;font-family:var(--sans);font-size:13px;padding:10px 22px;border-radius:24px;box-shadow:0 4px 20px rgba(0,0,0,0.25);transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1);z-index:9999;white-space:nowrap;}
 #toast.show{transform:translateX(-50%) translateY(0);}
 
-/* ── Auto-backup indicator ── */
-#backup-dot{width:7px;height:7px;border-radius:50%;background:var(--green);opacity:0;transition:opacity 0.4s;flex-shrink:0;}
-#backup-dot.flash{opacity:1;}
+/* ── Drive sync ── */
+.drive-status{display:none;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:rgba(255,255,255,0.7);white-space:nowrap;}
+.drive-status.vis{display:flex;}
+.drive-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:#aaa;}
+.drive-dot.synced{background:#4ade80;}
+.drive-dot.syncing{background:var(--gold);animation:pulse 1s infinite;}
+.drive-dot.error{background:var(--red);}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+.btn-drive-signin{display:none;background:#fff;color:var(--navy);border:none;font-family:var(--sans);font-size:12px;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;transition:all 0.15s;white-space:nowrap;align-items:center;gap:6px;}
+.btn-drive-signin.vis{display:flex;}
+.btn-drive-signin:hover{background:#e8f4fd;}
+.btn-drive-signout{display:none;background:transparent;border:1px solid rgba(255,255,255,0.25)!important;color:rgba(255,255,255,0.7);font-family:var(--sans);font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;}
+.btn-drive-signout.vis{display:inline-block;}
+.btn-drive-signout:hover{background:rgba(255,255,255,0.1);}
 
 main{max-width:1280px;margin:0 auto;padding:1.5rem;}
 
@@ -57,10 +80,27 @@ main{max-width:1280px;margin:0 auto;padding:1.5rem;}
 .or-row span{font-size:12px;color:var(--muted);font-family:var(--mono);}
 .btn-load-session{max-width:460px;width:100%;background:#fff;color:var(--teal);border:1.5px solid var(--accent);font-family:var(--sans);font-size:14px;font-weight:500;padding:10px 0;border-radius:8px;cursor:pointer;transition:all 0.15s;}
 .btn-load-session:hover{background:var(--light);}
-.error-banner{background:var(--red-bg);border:1px solid #f5c6c6;border-radius:8px;padding:10px 14px;font-size:13px;color:var(--red);display:none;}
+.btn-go-back{max-width:460px;width:100%;background:transparent;color:var(--muted);border:1px solid var(--border);font-family:var(--sans);font-size:13px;font-weight:500;padding:9px 0;border-radius:8px;cursor:pointer;transition:all 0.15s;display:none;}
+.btn-go-back:hover{border-color:var(--teal);color:var(--teal);background:var(--light);}
 
 /* ── Banners ── */
-.dup-banner{background:var(--orange-bg);border:1px solid var(--orange-border);border-radius:8px;padding:10px 16px;display:none;align-items:center;gap:10px;margin-bottom:0.75rem;flex-wrap:wrap;}
+.backup-banner{background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:none;flex-direction:column;gap:10px;margin-bottom:0.75rem;box-shadow:0 2px 12px rgba(0,0,0,0.08);}
+.backup-banner.visible{display:flex;}
+.backup-banner-top{display:flex;align-items:center;gap:10px;}
+.backup-banner-icon{font-size:22px;flex-shrink:0;}
+.backup-banner-text{flex:1;font-size:13px;color:var(--text);}
+.backup-banner-text strong{color:var(--navy);}
+.backup-banner-text .backup-age{font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px;}
+.backup-banner-btns{display:flex;gap:8px;}
+.backup-restore-btn{background:var(--navy);color:#fff;border:none;font-family:var(--sans);font-size:13px;font-weight:500;padding:8px 18px;border-radius:7px;cursor:pointer;flex:1;transition:all 0.15s;}
+.backup-restore-btn:hover{background:var(--teal);}
+.backup-dismiss-btn{background:transparent;color:var(--muted);border:1px solid var(--border);font-family:var(--sans);font-size:13px;padding:8px 14px;border-radius:7px;cursor:pointer;transition:all 0.15s;}
+.backup-dismiss-btn:hover{border-color:var(--red);color:var(--red);}
+.reconnect-banner{background:var(--light);border:1px solid var(--border);border-radius:8px;padding:9px 16px;display:none;align-items:center;gap:10px;margin-bottom:0.75rem;flex-wrap:wrap;}
+.reconnect-banner.visible{display:flex;}
+.reconnect-banner-text{font-size:13px;color:var(--teal);flex:1;}
+.reconnect-btn{font-family:var(--sans);font-size:12px;padding:5px 14px;border-radius:6px;cursor:pointer;border:1px solid var(--teal);background:transparent;color:var(--teal);transition:all 0.15s;white-space:nowrap;}
+.reconnect-btn:hover{background:var(--teal);color:#fff;}background:var(--orange-bg);border:1px solid var(--orange-border);border-radius:8px;padding:10px 16px;display:none;align-items:center;gap:10px;margin-bottom:0.75rem;flex-wrap:wrap;}
 .dup-banner.visible{display:flex;}
 .dup-banner-text{font-size:13px;color:var(--orange);flex:1;}
 .dup-btn{font-family:var(--sans);font-size:12px;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid var(--orange);background:transparent;color:var(--orange);transition:all 0.15s;white-space:nowrap;}
@@ -246,8 +286,93 @@ td{padding:9px 11px;color:var(--text);vertical-align:middle;}
 /* checkbox style */
 input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--navy);}
 
+/* ── Analytics panel ── */
+.analytics-panel{background:#fff;border-radius:12px;border:1px solid var(--border);margin-bottom:1rem;overflow:hidden;}
+.analytics-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;user-select:none;}
+.analytics-hdr:hover{background:var(--pale);}
+.analytics-title{font-size:13px;font-weight:600;color:var(--navy);display:flex;align-items:center;gap:8px;}
+.analytics-title-badge{font-family:var(--mono);font-size:10px;background:var(--accent);color:#fff;padding:2px 7px;border-radius:4px;}
+.analytics-arrow{font-size:11px;color:var(--muted);transition:transform 0.2s;}
+.analytics-arrow.open{transform:rotate(180deg);}
+.analytics-body{display:none;padding:1rem 1.25rem 1.25rem;}
+.analytics-body.open{display:block;}
+.analytics-controls{display:flex;align-items:center;gap:10px;margin-bottom:1rem;flex-wrap:wrap;}
+.analytics-controls select{border:1px solid var(--border);border-radius:7px;padding:6px 10px;font-family:var(--sans);font-size:12px;color:var(--text);background:#fff;outline:none;cursor:pointer;}
+.chart-legend{display:flex;gap:16px;flex-wrap:wrap;}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.chart-container{position:relative;width:100%;margin-top:10px;}
+.chart-canvas{width:100%;border-radius:8px;background:var(--pale);}
+.chart-tooltip{position:absolute;background:var(--navy);color:#fff;font-family:var(--mono);font-size:11px;padding:7px 10px;border-radius:7px;pointer-events:none;display:none;white-space:nowrap;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,0.2);}
+.chart-tooltip::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--navy);}
+.chart-empty{text-align:center;padding:2rem;color:var(--muted);font-size:13px;font-style:italic;}
+.bulk-rcpt-bar{background:#fff;border-radius:10px;border:2px dashed var(--border);padding:10px 16px;display:flex;align-items:center;gap:12px;margin-bottom:0.75rem;cursor:pointer;transition:all 0.2s;flex-wrap:wrap;}
+.bulk-rcpt-bar:hover{border-color:var(--accent);background:var(--pale);}
+.bulk-rcpt-bar.drag-active{border-color:var(--accent);background:var(--light);}
+.bulk-rcpt-icon{font-size:20px;flex-shrink:0;}
+.bulk-rcpt-text{flex:1;}
+.bulk-rcpt-title{font-size:13px;font-weight:600;color:var(--navy);}
+.bulk-rcpt-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+.bulk-rcpt-count{font-family:var(--mono);font-size:11px;background:var(--green-bg);color:var(--green);padding:3px 9px;border-radius:12px;white-space:nowrap;}
+.bulk-rcpt-btn{background:var(--navy);color:#fff;border:none;font-family:var(--sans);font-size:12px;font-weight:500;padding:7px 14px;border-radius:7px;cursor:pointer;white-space:nowrap;flex-shrink:0;}
+.bulk-rcpt-btn:hover{background:var(--teal);}
+
+/* bulk receipt modal */
+#bulk-rcpt-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:600;align-items:flex-start;justify-content:center;padding-top:60px;}
+#bulk-rcpt-modal.open{display:flex;}
+.br-box{background:#fff;border-radius:14px;width:min(760px,96vw);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,0.25);}
+.br-hdr{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);}
+.br-hdr-title{font-size:14px;font-weight:600;color:var(--navy);}
+.br-close{background:transparent;border:none;font-size:20px;cursor:pointer;color:var(--muted);}
+.br-close:hover{color:var(--red);}
+.br-drop{border:2px dashed var(--border);border-radius:10px;padding:2rem;text-align:center;cursor:pointer;transition:all 0.2s;margin:16px 20px 0;}
+.br-drop:hover,.br-drop.drag-active{border-color:var(--accent);background:var(--pale);}
+.br-drop-icon{font-size:32px;margin-bottom:8px;}
+.br-drop-text{font-size:13px;color:var(--muted);}
+.br-drop-text strong{color:var(--navy);}
+.br-body{flex:1;overflow-y:auto;padding:12px 20px 20px;}
+.br-stats{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
+.br-stat{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:12px;}
+.br-stat.matched{background:var(--green-bg);color:var(--green);}
+.br-stat.ambiguous{background:var(--orange-bg);color:var(--orange);}
+.br-stat.unmatched{background:#f0f0f0;color:var(--muted);}
+.br-stat.image{background:var(--light);color:var(--teal);}
+.br-section-label{font-size:11px;font-family:var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 6px;}
+.br-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;margin-bottom:6px;border:1px solid var(--border);background:#fff;}
+.br-item.matched{border-color:#9dd4b4;background:#f4fbf7;}
+.br-item.ambiguous{border-color:var(--orange-border);background:var(--orange-bg);}
+.br-item.unmatched{border-color:#e0e0e0;background:#fafafa;}
+.br-item.image-item{border-color:var(--border);background:var(--pale);}
+.br-thumb{width:44px;height:44px;object-fit:cover;border-radius:5px;flex-shrink:0;}
+.br-thumb-pdf{width:44px;height:44px;background:var(--red-bg);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.br-item-info{flex:1;min-width:0;}
+.br-item-name{font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.br-item-detail{font-size:11px;color:var(--muted);margin-top:2px;font-family:var(--mono);}
+.br-item-match{font-size:11px;color:var(--green);margin-top:3px;font-family:var(--mono);}
+.br-item-warn{font-size:11px;color:var(--orange);margin-top:3px;}
+.br-assign-sel{border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-family:var(--sans);font-size:11px;color:var(--text);background:#fff;outline:none;cursor:pointer;width:100%;margin-top:5px;}
+.br-status-icon{font-size:16px;flex-shrink:0;margin-top:2px;}
+.br-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.br-apply-btn{background:var(--green);color:#fff;border:none;font-family:var(--sans);font-size:13px;font-weight:500;padding:9px 22px;border-radius:7px;cursor:pointer;}
+.br-apply-btn:hover{background:#155f44;}
+.br-apply-btn:disabled{opacity:0.5;cursor:not-allowed;}
+.br-footer-note{font-size:12px;color:var(--muted);}
+.br-processing{text-align:center;padding:2rem;color:var(--muted);font-size:13px;}
+.br-spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:8px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.hamburger{display:none;background:transparent;border:none;cursor:pointer;padding:6px;color:#fff;flex-direction:column;gap:4px;flex-shrink:0;}
+.hamburger span{display:block;width:20px;height:2px;background:#fff;border-radius:2px;transition:all 0.2s;}
+.mobile-menu{display:none;position:fixed;top:56px;right:0;left:0;background:var(--navy);z-index:190;padding:10px;flex-direction:column;gap:6px;box-shadow:0 6px 20px rgba(0,0,0,0.3);}
+.mobile-menu.open{display:flex;}
+.mmenu-btn{background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.9);font-family:var(--sans);font-size:13px;font-weight:500;padding:10px 16px;border-radius:8px;cursor:pointer;text-align:left;transition:all 0.15s;width:100%;}
+.mmenu-btn:hover{background:rgba(255,255,255,0.1);}
+.mmenu-btn.green{background:var(--green);border-color:var(--green);color:#fff;}
+.mmenu-btn.teal{background:var(--accent);border-color:var(--accent);color:#fff;}
+.mmenu-sep{height:1px;background:rgba(255,255,255,0.1);margin:2px 0;}
+.drive-status-mobile{display:flex;align-items:center;gap:8px;padding:8px 16px;font-family:var(--mono);font-size:12px;color:rgba(255,255,255,0.7);}
+
 @media(max-width:720px){
-  header{padding:0 1rem;}
+  header{padding:0 1rem;height:52px;}
   .logo-text{display:none;}
   main{padding:1rem;}
   .upload-card{padding:2rem 1.25rem;}
@@ -255,7 +380,13 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
   .table-wrap table{display:none;}
   .mobile-cards{display:block;}
   .kpi-grid{grid-template-columns:repeat(2,1fr);}
-  .hbtn{font-size:11px;padding:5px 8px;}
+  /* Hide all header buttons — replaced by hamburger */
+  .hbtn{display:none!important;}
+  .btn-drive-signin{display:none!important;}
+  .btn-drive-signout{display:none!important;}
+  .drive-status{display:none!important;}
+  #backup-dot{display:none!important;}
+  .hamburger{display:flex;}
 }
 @media(max-width:400px){.m-fields{grid-template-columns:1fr;}}
 </style>
@@ -267,17 +398,55 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
+    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v3.9</span>
   </div>
   <div class="header-right">
-    <div id="backup-dot" title="Auto-saved"></div>
-    <button class="hbtn hbtn-ghost" id="btn-rules"   onclick="openRules()" title="Auto-categorise rules">⚙ Rules</button>
+    <!-- Drive sync status -->
+    <div class="drive-status" id="drive-status">
+      <div class="drive-dot" id="drive-dot"></div>
+      <span id="drive-status-text">Drive</span>
+    </div>
+    <button class="btn-drive-signin" id="btn-drive-signin" onclick="driveSignIn()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      Connect Google Drive
+    </button>
+    <button class="btn-drive-signout" id="btn-drive-signout" onclick="driveSignOut()">Sign out</button>
+    <div id="backup-dot" style="display:none"></div>
+    <button class="hbtn hbtn-ghost" id="btn-rules"   onclick="openRules()">⚙ Rules</button>
     <button class="hbtn hbtn-ghost" id="btn-load"    onclick="document.getElementById('session-input').click()">↑ Load session</button>
     <button class="hbtn hbtn-save"  id="btn-save"    onclick="saveSession()">↓ Save session</button>
     <button class="hbtn hbtn-ghost" id="btn-csv"     onclick="exportCSV()">CSV</button>
     <button class="hbtn hbtn-green" id="btn-xl"      onclick="exportExcel()">Export .xlsx</button>
+    <button class="hbtn hbtn-purple" id="btn-accountant" onclick="exportAccountantReport()">📋 Accountant</button>
     <button class="hbtn hbtn-ghost" id="btn-newfile" onclick="resetAll()">New file</button>
+    <button class="hbtn" id="btn-debug" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.35)!important;color:rgba(255,255,255,0.8);font-size:12px;padding:6px 10px;" onclick="openDebugPanel()" title="Debug log">🐛</button>
+    <!-- Hamburger (mobile only) -->
+    <button class="hamburger" id="hamburger-btn" onclick="toggleMobileMenu()" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
   </div>
 </header>
+
+<!-- Mobile slide-down menu -->
+<div class="mobile-menu" id="mobile-menu">
+  <div class="drive-status-mobile" id="drive-status-mobile" style="display:none">
+    <div class="drive-dot" id="drive-dot-mobile"></div>
+    <span id="drive-status-text-mobile">Drive</span>
+  </div>
+  <button class="mmenu-btn teal" id="mmenu-drive" onclick="driveSignIn();closeMobileMenu()" style="display:none">🔗 Connect Google Drive</button>
+  <button class="mmenu-btn" id="mmenu-signout" onclick="driveSignOut();closeMobileMenu()" style="display:none">Sign out of Drive</button>
+  <div class="mmenu-sep" id="mmenu-sep1" style="display:none"></div>
+  <button class="mmenu-btn" id="mmenu-rules" onclick="openRules();closeMobileMenu()" style="display:none">⚙ Auto-categorise Rules</button>
+  <button class="mmenu-btn" id="mmenu-load" onclick="document.getElementById('session-input').click();closeMobileMenu()" style="display:none">↑ Load session file</button>
+  <button class="mmenu-btn teal" id="mmenu-save" onclick="saveSession();closeMobileMenu()" style="display:none">↓ Save session</button>
+  <div class="mmenu-sep"></div>
+  <button class="mmenu-btn" onclick="exportCSV();closeMobileMenu()">Export CSV</button>
+  <button class="mmenu-btn green" onclick="exportExcel();closeMobileMenu()">Export .xlsx for accountant</button>
+  <div class="mmenu-sep"></div>
+  <button class="mmenu-btn" onclick="resetAll();closeMobileMenu()">+ New file</button>
+  <div class="mmenu-sep"></div>
+  <div style="text-align:center;font-family:var(--mono);font-size:10px;color:rgba(255,255,255,0.3);padding:4px 0;" id="mmenu-version"></div>
+</div>
 
 <div id="toast"></div>
 
@@ -298,12 +467,31 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     </div>
     <div class="or-row"><span>or resume where you left off</span></div>
     <button class="btn-load-session" onclick="document.getElementById('session-input').click()">↓ Load saved session (.json)</button>
+    <button class="btn-go-back" id="btn-go-back" onclick="undoReset()">↩ Go back to previous session</button>
     <div class="error-banner" id="error-banner"></div>
+    <div class="backup-banner" id="backup-banner">
+      <div class="backup-banner-top">
+        <div class="backup-banner-icon">💾</div>
+        <div class="backup-banner-text">
+          <strong id="backup-banner-title">Local backup found</strong>
+          <div class="backup-age" id="backup-banner-age"></div>
+        </div>
+      </div>
+      <div class="backup-banner-btns">
+        <button class="backup-restore-btn" id="backup-restore-btn" onclick="restoreBackupFromBanner()">↩ Restore session</button>
+        <button class="backup-dismiss-btn" onclick="document.getElementById('backup-banner').classList.remove('visible')">Start fresh</button>
+      </div>
+    </div>
   </section>
 
   <!-- App screen -->
   <section id="app-section">
     <div class="error-banner" id="error-banner-app"></div>
+    <div class="reconnect-banner" id="reconnect-banner">
+      <div class="reconnect-banner-text">🔄 Drive disconnected — your local data is shown. Reconnect to sync.</div>
+      <button class="reconnect-btn" onclick="driveSignIn(false);document.getElementById('reconnect-banner').classList.remove('visible')">Reconnect Drive</button>
+      <button class="reconnect-btn" style="border-color:var(--muted);color:var(--muted)" onclick="document.getElementById('reconnect-banner').classList.remove('visible')">Dismiss</button>
+    </div>
 
     <!-- Banners -->
     <div class="dup-banner" id="dup-banner">
@@ -329,6 +517,10 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
       </div>
       <div class="kpi-card"><div class="kpi-label">Personal (excluded)</div><div class="kpi-value" id="kpi-personal" style="color:var(--personal)">0</div></div>
       <div class="kpi-card"><div class="kpi-label">Credits</div><div class="kpi-value green" id="kpi-credits">$0.00</div></div>
+      <div class="kpi-card" style="cursor:pointer" onclick="document.getElementById('receipt-filter').value='missing';renderTable()" title="Click to show missing receipts">
+        <div class="kpi-label">Missing Receipts</div>
+        <div class="kpi-value" id="kpi-missing-rcpt" style="color:var(--orange)">0</div>
+      </div>
     </div>
 
     <!-- BAS Panel -->
@@ -362,9 +554,45 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
       <button class="bulk-clear" onclick="clearSelection()">✕ Clear selection</button>
     </div>
 
+    <!-- Analytics Panel -->
+    <div class="analytics-panel">
+      <div class="analytics-hdr" onclick="toggleAnalytics()">
+        <div class="analytics-title">📈 Daily Analytics <span class="analytics-title-badge">Charts</span></div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="analytics-controls" onclick="event.stopPropagation()" style="margin:0">
+            <select id="chart-period" onchange="renderChart()">
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="180">Last 6 months</option>
+              <option value="365">Last 12 months</option>
+              <option value="fy">Current FY</option>
+              <option value="all">All time</option>
+            </select>
+            <select id="chart-group" onchange="renderChart()">
+              <option value="day">Daily</option>
+              <option value="week">Weekly</option>
+              <option value="month">Monthly</option>
+            </select>
+          </div>
+          <span class="analytics-arrow" id="analytics-arrow">▼</span>
+        </div>
+      </div>
+      <div class="analytics-body" id="analytics-body">
+        <div class="chart-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#c0392b"></div>Expenditure (incl. GST)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#1a7f5a"></div>Income (credits)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#00a3ad;border-radius:2px;width:14px;height:4px;"></div>Gross Profit</div>
+        </div>
+        <div class="chart-container">
+          <canvas id="analytics-canvas" class="chart-canvas" height="280"></canvas>
+          <div class="chart-tooltip" id="chart-tooltip"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Toolbar -->
     <div class="toolbar">
-      <input type="text" id="search-input" placeholder="Search description or notes…" oninput="renderTable()">
+      <input type="text" id="search-input" placeholder="Search description or notes…" oninput="onSearchInput()">
       <div class="t-sep"></div>
       <select id="period-filter" onchange="onPeriodChange()">
         <option value="all">All dates</option>
@@ -398,8 +626,29 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
         <option value="business">Business only</option>
         <option value="personal">Personal only</option>
       </select>
+      <select id="receipt-filter" onchange="renderTable()">
+        <option value="">All receipts</option>
+        <option value="missing">⚠ Missing receipt</option>
+        <option value="attached">✓ Has receipt</option>
+      </select>
       <span class="toolbar-label" id="row-count-label"></span>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap;">
+        <input type="checkbox" id="merchant-cleanup" onchange="renderTable()" style="width:13px;height:13px;accent-color:var(--navy);" checked>
+        Clean names
+      </label>
       <button class="btn-action" onclick="resetAll()">+ New file</button>
+    </div>
+
+    <!-- Bulk Receipt Upload Bar -->
+    <div class="bulk-rcpt-bar" id="bulk-rcpt-bar"
+         ondragover="bulkBarDragOver(event)" ondragleave="bulkBarDragLeave()" ondrop="bulkBarDrop(event)">
+      <div class="bulk-rcpt-icon">📎</div>
+      <div class="bulk-rcpt-text">
+        <div class="bulk-rcpt-title">Bulk Upload Receipts</div>
+        <div class="bulk-rcpt-sub">Drag PDFs or photos here, or click Choose files to browse</div>
+      </div>
+      <button class="bulk-rcpt-count" id="bulk-rcpt-count" style="display:none;cursor:pointer;border:none;" onclick="openBulkRcpt()" title="Click to view queued receipts"></button>
+      <button class="bulk-rcpt-btn" onclick="document.getElementById('bulk-file-input').click()">Choose files</button>
     </div>
 
     <div class="table-wrap">
@@ -423,6 +672,33 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <div class="mobile-cards" id="mobile-cards"></div>
   </section>
 </main>
+
+<!-- Bulk receipt upload modal -->
+<div id="bulk-rcpt-modal">
+  <div class="br-box">
+    <div class="br-hdr">
+      <div class="br-hdr-title">📎 Bulk Upload Receipts</div>
+      <button class="br-close" onclick="closeBulkRcpt()">✕</button>
+    </div>
+    <label class="br-drop" id="br-drop" for="bulk-file-input"
+         ondragover="brDropOver(event)" ondragleave="brDropLeave()" ondrop="brDropFiles(event)">
+      <div class="br-drop-icon">📂</div>
+      <div class="br-drop-text"><strong>Drop receipts here</strong> or click to browse<br>
+        <span style="font-size:11px">PDFs auto-matched by date &amp; amount · Images assigned manually</span>
+      </div>
+    </label>
+    <div class="br-body" id="br-body">
+      <div style="text-align:center;padding:1.5rem;color:var(--muted);font-size:13px;" id="br-empty">
+        Upload receipts above to start matching
+      </div>
+    </div>
+    <div class="br-footer">
+      <span class="br-footer-note" id="br-footer-note"></span>
+      <button class="br-apply-btn" id="br-apply-btn" onclick="applyBulkReceipts()" disabled>Apply matched receipts</button>
+    </div>
+  </div>
+</div>
+<input type="file" id="bulk-file-input" accept="image/*,.pdf" multiple style="display:none" onchange="processBulkFiles(this.files)">
 
 <!-- Receipt modal -->
 <div id="rcpt-modal">
@@ -463,6 +739,23 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
 
 <input type="file" id="file-input"    accept=".csv"  style="display:none" onchange="handleFile(this.files[0])">
 <input type="file" id="session-input" accept=".json" style="display:none" onchange="loadSession(this.files[0])">
+
+<!-- Debug log modal -->
+<div id="debug-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2000;align-items:flex-start;justify-content:center;padding-top:60px;">
+  <div style="background:#1a2e3b;border-radius:12px;width:min(700px,96vw);max-height:80vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,0.4);">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.1);">
+      <span style="color:#fff;font-family:var(--mono);font-size:13px;font-weight:500;">🐛 Debug Log</span>
+      <div style="display:flex;gap:8px;">
+        <button onclick="copyDebugLogs()" style="background:rgba(255,255,255,0.1);border:none;color:#aaa;font-family:var(--sans);font-size:12px;padding:5px 12px;border-radius:5px;cursor:pointer;">Copy all</button>
+        <button onclick="document.getElementById('debug-panel-body').innerHTML='';debugLogs.length=0;" style="background:rgba(255,255,255,0.1);border:none;color:#aaa;font-family:var(--sans);font-size:12px;padding:5px 12px;border-radius:5px;cursor:pointer;">Clear</button>
+        <button onclick="closeDebugPanel()" style="background:transparent;border:none;color:#aaa;font-size:18px;cursor:pointer;line-height:1;">✕</button>
+      </div>
+    </div>
+    <div id="debug-panel-body" style="flex:1;overflow-y:auto;padding:10px 14px;font-family:monospace;font-size:11px;color:#ccc;background:#0f1e2a;border-radius:0 0 12px 12px;">
+      <div style="color:#555;font-style:italic;">Events will appear here as they happen…</div>
+    </div>
+  </div>
+</div>
 
 <script>
 // ── Constants & state ─────────────────────────────────────────────────────────
@@ -519,9 +812,16 @@ let rules=[...DEFAULT_RULES];
 let autoBackupTimer=null;
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
+let _searchTimer=null;
+function onSearchInput(){
+  clearTimeout(_searchTimer);
+  _searchTimer=setTimeout(()=>renderTable(),180);
+}
 function toast(msg,dur=2800){
-  const e=document.getElementById('toast');e.textContent=msg;e.classList.add('show');
-  setTimeout(()=>e.classList.remove('show'),dur);
+  const e=document.getElementById('toast');
+  if(_toastTimer)clearTimeout(_toastTimer);
+  e.textContent=msg;e.classList.add('show');
+  _toastTimer=setTimeout(()=>{e.classList.remove('show');_toastTimer=null;},dur);
 }
 function fmtDate(d){
   if(!d||!(d instanceof Date)||isNaN(d))return'—';
@@ -537,7 +837,21 @@ function parseDate(s){
   if((m=s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/)))return new Date(+m[1],+m[2]-1,+m[3]);
   return null;
 }
-function parseNum(s){return parseFloat((s||'').replace(/[^0-9.\-]/g,''))||0;}
+function parseNum(s){
+  s=(s||'').trim();
+  const neg=s.startsWith('-')||s.startsWith('(');
+  const n=parseFloat(s.replace(/[^0-9.]/g,''))||0;
+  return neg?-n:n;
+}
+
+// Save dates as local YYYY-MM-DD to avoid UTC timezone shift in AEST
+function dateToStr(d){
+  if(!(d instanceof Date)||isNaN(d))return d;
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function serializeRows(rows){
+  return rows.map(r=>({...r,date:dateToStr(r.date)}));
+}
 
 // ── Drag & drop ───────────────────────────────────────────────────────────────
 function onDragOver(e){e.preventDefault();document.getElementById('drop-zone').classList.add('drag-over');}
@@ -547,6 +861,7 @@ function onDrop(e){e.preventDefault();onDragLeave();const f=e.dataTransfer.files
 // ── CSV load ──────────────────────────────────────────────────────────────────
 function handleFile(file){
   if(!file)return;
+  dbg('handleFile',{name:file.name,size:file.size});
   if(!file.name.endsWith('.csv')){showError('Please upload a .csv from ANZ Internet Banking.',false);return;}
   sessionName=file.name.replace('.csv','');
   const r=new FileReader();
@@ -555,19 +870,34 @@ function handleFile(file){
   document.getElementById('file-input').value='';
 }
 
+function rowKey(date,amount,desc){
+  const d=date instanceof Date&&!isNaN(date)?dateToStr(date):(typeof date==='string'?date.slice(0,10):String(date));
+  const a=isNaN(parseFloat(amount))?'0.00':parseFloat(amount).toFixed(2);
+  return d+'|'+a+'|'+(desc||'').trim();
+}
+
 function parseCSV(text){
   const lines=text.trim().split(/\r?\n/).filter(l=>l.trim());
   if(lines.length<2)throw new Error('File appears empty.');
   const first=lines[0].toLowerCase();
-  const hasHdr=first.includes('date')||first.includes('description')||first.includes('amount');
+  // Only treat as header if the line has ALL numeric-free content AND multiple header words
+  const hdrWords=['date','description','amount','debit','credit','balance','transaction'];
+  const hdrMatches=hdrWords.filter(w=>first.includes(w)).length;
+  const hasHdr=hdrMatches>=2&&!first.match(/^\d{1,2}[\/\-]/); // 2+ header words AND doesn't start with a date
   const data=hasHdr?lines.slice(1):lines;
   const parsed=[];
   for(const line of data){
     const cols=splitCSV(line);if(cols.length<2)continue;
     let date='',desc='',debit=0,credit=0;
-    if(cols.length>=5){date=cl(cols[0]);desc=cl(cols[1]);debit=parseNum(cols[2]);credit=parseNum(cols[3]);}
-    else if(cols.length>=3){date=cl(cols[0]);desc=cl(cols[2]);const a=parseNum(cols[1]);if(a<0)debit=Math.abs(a);else credit=a;}
-    else{date=cl(cols[0]);desc=cl(cols[1]);}
+    if(cols.length>=5&&cols[2].match(/[\d.]/g)&&cols[3].match(/[\d.]/g)){
+      date=cl(cols[0]);desc=cl(cols[1]);debit=parseNum(cols[2]);credit=parseNum(cols[3]);
+    }else if(cols.length>=3){
+      date=cl(cols[0]);
+      const isCol2Amt=Math.abs(parseNum(cols[1]))>0||/^[-$]?\d/.test(cols[1].trim());
+      desc=isCol2Amt?cl(cols[2]):cl(cols[1]);
+      const rawAmt=isCol2Amt?parseNum(cols[1]):parseNum(cols[2]);
+      if(rawAmt<0)debit=Math.abs(rawAmt);else credit=rawAmt;
+    }else{date=cl(cols[0]);desc=cl(cols[1]);}
     if(!date||!desc)continue;
     const pd=parseDate(date);const isD=debit>0;const amt=isD?debit:credit;
     parsed.push({date:pd||date,dateRaw:date,description:desc,amount:amt,isDebit:isD,
@@ -576,12 +906,81 @@ function parseCSV(text){
       isDup:false,autoCat:false,id:Math.random().toString(36).slice(2)});
   }
   if(!parsed.length)throw new Error('No valid rows found.');
-  allRows=parsed;
+
+  // ── Smart merge: preserve existing progress ───────────────────────────────
+  const isFirstLoad=!allRows.length;
+
+  if(isFirstLoad){
+    // No existing data — just load fresh
+    allRows=parsed;
+    finishLoad(parsed.length+' transactions loaded');
+  } else {
+    // Build lookup of existing rows by key
+    // For rows with the same key, track how many we've seen (to handle true duplicates)
+    const existingByKey={};
+    allRows.forEach(r=>{
+      const k=rowKey(r.date,r.amount,r.description);
+      if(!existingByKey[k])existingByKey[k]=[];
+      existingByKey[k].push(r);
+    });
+
+    // Track how many of each key we've consumed from existing
+    const consumedCount={};
+
+    const merged=[];
+    let added=0,preserved=0;
+    const usedIds=new Set();
+
+    parsed.forEach(newRow=>{
+      const k=rowKey(newRow.date,newRow.amount,newRow.description);
+      const consumed=consumedCount[k]||0;
+      const matches=existingByKey[k]||[];
+
+      if(matches.length>consumed){
+        // Found an existing row — reuse it with all its progress intact
+        merged.push(matches[consumed]);
+        usedIds.add(matches[consumed].id);
+        consumedCount[k]=consumed+1;
+        preserved++;
+      } else {
+        // Genuinely new transaction — add it fresh
+        merged.push(newRow);
+        added++;
+      }
+    });
+
+    // Keep existing rows that weren't consumed by the merge
+    // Use consumedCount vs existingByKey length to detect exhausted groups
+    // Build once outside the filter — avoids O(n²) Set construction inside the loop
+    const parsedKeySet=new Set(parsed.map(p=>rowKey(p.date,p.amount,p.description)));
+    const retained=allRows.filter(r=>{
+      if(usedIds.has(r.id))return false; // already merged into new position
+      const k=rowKey(r.date,r.amount,r.description);
+      const consumed=consumedCount[k]||0;
+      const total=(existingByKey[k]||[]).length;
+      // Keep if key not in new CSV at all, OR this key was exhausted (CSV had fewer than existing)
+      return !parsedKeySet.has(k)||(consumed>=total&&consumed>0);
+    });
+    allRows=[...merged,...retained];
+
+    const msg=added>0
+      ?`✓ ${added} new transaction${added!==1?'s':''} added · ${preserved} existing preserved${retained.length?' · '+retained.length+' older rows kept':''}`
+      :`✓ Up to date — ${preserved} transactions preserved${retained.length?' · '+retained.length+' older rows kept':''}`;
+    finishLoad(msg);
+  }
+}
+
+function finishLoad(msg){
+  // Reset dismissal flags — but respect persisted dup dismissed state
+  try{dupDismissed=localStorage.getItem('anz_dup_dismissed')==='true';}catch(e){dupDismissed=false;}
+  autocatDismissed=false;
+  showDupsOnly=false;
+  selectedIds.clear();
   detectDuplicates();
   runAutoCatSilent();
   buildCatFilter();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();
-  startAutoBackup();
-  toast('✓ Loaded '+parsed.length+' transactions');
+  if(driveToken)driveSaveSession();else startAutoBackup();
+  toast(msg);
 }
 
 // ── Duplicate detection ───────────────────────────────────────────────────────
@@ -589,13 +988,17 @@ function detectDuplicates(){
   allRows.forEach(r=>r.isDup=false);
   const seen={};const dups=new Set();
   allRows.forEach(r=>{
-    if(!r.isDebit)return;
-    const d=r.date instanceof Date?r.date.toDateString():r.dateRaw;
-    const key=d+'|'+r.amount.toFixed(2)+'|'+r.description.slice(0,25);
+    if(!r.isDebit||r.receiptFile)return;
+    const d=r.date instanceof Date&&!isNaN(r.date)?r.date.toDateString():(r.dateRaw||String(r.date));
+    const key=d+'|'+r.amount.toFixed(2)+'|'+r.description;
     if(seen[key]){dups.add(seen[key]);dups.add(r.id);}else seen[key]=r.id;
   });
   dups.forEach(id=>{const r=allRows.find(r=>r.id===id);if(r)r.isDup=true;});
   const n=dups.size;
+  // Read persisted dismissed state
+  if(!dupDismissed){
+    try{dupDismissed=localStorage.getItem('anz_dup_dismissed')==='true';}catch(e){}
+  }
   if(n>0&&!dupDismissed){
     document.getElementById('dup-text').innerHTML=`<strong>⚠ ${n} possible duplicate${n>1?'s':''} detected</strong> — same date, amount and description. Review and mark personal or ignore.`;
     document.getElementById('dup-banner').classList.add('visible');
@@ -608,14 +1011,23 @@ function toggleDupFilter(){
   b.classList.toggle('active',showDupsOnly);
   renderTable();
 }
-function dismissDups(){dupDismissed=true;document.getElementById('dup-banner').classList.remove('visible');showDupsOnly=false;renderTable();}
+function dismissDups(){
+  dupDismissed=true;
+  // Clear the dup flag on every row so highlights disappear
+  allRows.forEach(r=>r.isDup=false);
+  try{localStorage.setItem('anz_dup_dismissed','true');}catch(e){}
+  document.getElementById('dup-banner').classList.remove('visible');
+  showDupsOnly=false;
+  const btn=document.getElementById('dup-review-btn');
+  if(btn){btn.textContent='Show duplicates';btn.classList.remove('active');}
+  renderTable();
+}
 
 // ── Auto-detect / rules ───────────────────────────────────────────────────────
 function runAutoCatSilent(){
-  // Find rows with no category that match a rule
   autoCatSuggestions=[];
   allRows.forEach(r=>{
-    if(!r.isDebit||r.category)return;
+    if(!r.isDebit||r.category||r.autoCatSkip)return; // skip if manually left uncategorised
     const desc=r.description.toLowerCase();
     for(const rule of rules){
       if(desc.includes(rule.kw.toLowerCase())){
@@ -660,6 +1072,13 @@ function applyAutoCat(){
 }
 function dismissAutocat(){
   autocatDismissed=true;
+  try{localStorage.setItem('anz_autocat_dismissed','true');}catch(e){}
+  // Mark suggested rows so they won't be re-suggested after next upload
+  autoCatSuggestions.forEach(s=>{
+    const r=allRows.find(r=>r.id===s.id);
+    if(r)r.autoCatSkip=true;
+  });
+  autoCatSuggestions=[];
   document.getElementById('autocat-banner').classList.remove('visible');
 }
 
@@ -730,7 +1149,9 @@ function getDateRange(){
   if(v==='custom'){
     const f=document.getElementById('date-from').value;
     const t=document.getElementById('date-to').value;
-    return{from:f?new Date(f):null,to:t?new Date(t+'T23:59:59'):null};
+    // Parse as LOCAL midnight to avoid UTC offset excluding the boundary day in AEST
+    const parseLocal=s=>{const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?new Date(+m[1],+m[2]-1,+m[3]):null;};
+    return{from:f?parseLocal(f):null,to:t?new Date(+t.slice(0,4),+t.slice(5,7)-1,+t.slice(8,10),23,59,59):null};
   }
   if(v.startsWith('fy')){const yr=parseInt(v.slice(2));return{from:new Date(yr-1,6,1),to:new Date(yr,5,30,23,59,59)};}
   const fyYr=parseInt(document.getElementById('bas-fy-sel').value);
@@ -743,7 +1164,7 @@ function getDateRange(){
 function inRange(r,range){
   if(!range)return true;
   const d=r.date instanceof Date?r.date:null;
-  if(!d||isNaN(d))return true;
+  if(!d||isNaN(d))return false; // rows with unparseable dates are excluded from filtered views
   if(range.from&&d<range.from)return false;
   if(range.to&&d>range.to)return false;
   return true;
@@ -755,6 +1176,7 @@ function getFiltered(){
   const cat=document.getElementById('cat-filter').value;
   const typ=document.getElementById('type-filter').value;
   const bp=document.getElementById('bp-filter').value;
+  const rcpt=document.getElementById('receipt-filter').value;
   const range=getDateRange();
   return allRows.filter(r=>{
     if(showDupsOnly&&!r.isDup)return false;
@@ -765,6 +1187,8 @@ function getFiltered(){
     if(typ==='credit'&&r.isDebit)return false;
     if(bp==='business'&&r.bpType!=='business')return false;
     if(bp==='personal'&&r.bpType!=='personal')return false;
+    if(rcpt==='missing'&&r.receiptFile)return false;
+    if(rcpt==='attached'&&!r.receiptFile)return false;
     if(!inRange(r,range))return false;
     return true;
   });
@@ -781,7 +1205,11 @@ function updateKPIs(){
   document.getElementById('kpi-count').textContent=biz.length;
   document.getElementById('kpi-personal').textContent=allRows.filter(r=>r.bpType==='personal').length;
   document.getElementById('kpi-credits').textContent=fmtAUD(allRows.filter(r=>!r.isDebit).reduce((s,r)=>s+r.amount,0));
+  const missingRcpt=allRows.filter(r=>r.isDebit&&r.bpType==='business'&&!r.receiptFile).length;
+  const mrEl=document.getElementById('kpi-missing-rcpt');
+  if(mrEl){mrEl.textContent=missingRcpt;mrEl.style.color=missingRcpt>0?'var(--orange)':'var(--green)';}
   updateUncatBadge();
+  if(analyticsOpen)renderChart();
 }
 
 // ── BAS ───────────────────────────────────────────────────────────────────────
@@ -849,7 +1277,7 @@ function bulkApplyCat(){
   let n=0;
   selectedIds.forEach(id=>{const r=allRows.find(r=>r.id===id);if(r&&r.bpType==='business'){r.category=cat;n++;}});
   toast(`✓ Set "${cat}" on ${n} transaction${n!==1?'s':''}`);
-  clearSelection();updateKPIs();renderTable();
+  clearSelection();updateKPIs();updateUncatBadge();renderTable();
 }
 function bulkSetBP(val){
   let n=0;
@@ -877,10 +1305,16 @@ function renderTable(){
   });
   document.getElementById('row-count-label').textContent=rows.length+' rows';
 
-  // Update select-all state
+  // Update select-all state — do it once, not on every row render
   const allChecked=rows.length>0&&rows.every(r=>selectedIds.has(r.id));
   document.getElementById('select-all').checked=allChecked&&rows.length>0;
-  updateBulkBar();
+  // Only toggle bulk bar visibility if state actually changed
+  const newBulkVis=selectedIds.size>0;
+  const bar=document.getElementById('bulk-bar');
+  if(bar.classList.contains('visible')!==newBulkVis){
+    bar.classList.toggle('visible',newBulkVis);
+    document.getElementById('bulk-count').textContent=selectedIds.size;
+  }
 
   if(!rows.length){
     document.getElementById('table-body').innerHTML='<tr><td colspan="10" class="empty-state">No transactions match your filters.</td></tr>';
@@ -901,10 +1335,11 @@ function renderTable(){
     const gstAmt=r.isDebit&&r.gstIncluded==='yes'&&!isP(r)?`<td class="td-amount" style="color:var(--gold)">${fmtAUD(r.gstAmt)}</td>`:`<td class="td-mono" style="color:#ccc">—</td>`;
     const rcpt=r.receiptFile?`<div class="rcpt-cell"><div class="rcpt-badge" onclick="viewReceipt('${r.id}')"><span>${esc(r.receiptFile.name)}</span></div><span class="rcpt-remove" onclick="removeReceipt('${r.id}')">✕</span></div>`:`<div class="rcpt-cell"><button class="rcpt-btn" onclick="document.getElementById('rf_${r.id}').click()">+ Attach</button><input type="file" id="rf_${r.id}" accept="image/*,.pdf" style="display:none" onchange="attachReceipt('${r.id}',this)"></div>`;
     const descExtra=(r.isDup?` <span class="dup-flag">⚠ dup</span>`:'')+(r.autoCat?` <span class="autocat-flag">✦ auto</span>`:'');
+    const{main:dispMain,sub:dispSub}=getDisplayDesc(r);
     return`<tr class="${cls}">
       <td class="td-check"><input type="checkbox" ${isSel?'checked':''} onchange="toggleRow('${r.id}',this.checked)"></td>
       <td class="td-mono">${fmtDate(r.date)}</td>
-      <td class="td-desc"><span>${esc(r.description)}${descExtra}</span></td>
+      <td class="td-desc"><span>${esc(dispMain)}${descExtra}</span>${dispSub?`<span class="desc-original" title="${esc(dispSub)}">${esc(dispSub)}</span>`:''}</td>
       ${amtCell}${bpCell}${gstCell}${gstAmt}
       <td><select class="cat-select" onchange="setCat('${r.id}',this.value)" ${isP(r)?'disabled':''}><option value="">— Select —</option>${catOpts(r)}</select></td>
       <td>${rcpt}</td>
@@ -917,9 +1352,10 @@ function renderTable(){
     const cls=r.isDup?'dup-card':isP(r)?'personal-card':'';
     const co2=CATS.map(c=>`<option value="${esc(c)}" ${r.category===c?'selected':''}>${esc(c)}</option>`).join('');
     const gl=r.isDebit&&r.gstIncluded==='yes'&&!isP(r)?`<div class="m-gst">GST est. ${fmtAUD(r.gstAmt)}</div>`:'';
+      const{main:mMain,sub:mSub}=getDisplayDesc(r);
     return`<div class="m-card ${cls}">
       <div class="m-card-top">
-        <div class="m-desc">${esc(r.description)}${r.isDup?' ⚠':''}</div>
+        <div class="m-desc">${esc(mMain)}${r.isDup?' ⚠':''}</div>
         <div class="m-amount ${r.isDebit?'':'credit'}">${r.isDebit?'':'+'}${fmtAUD(r.amount)}</div>
       </div>
       <div class="m-date">${fmtDate(r.date)}${isP(r)?' · <span style="color:var(--personal)">Personal</span>':''}</div>${gl}
@@ -943,7 +1379,11 @@ function renderTable(){
 // ── Row setters ───────────────────────────────────────────────────────────────
 function setBP(id,val){const r=allRows.find(r=>r.id===id);if(!r)return;r.bpType=val;updateKPIs();renderTable();renderBAS();}
 function setCat(id,val){const r=allRows.find(r=>r.id===id);if(r){r.category=val;r.autoCat=false;}updateKPIs();}
-function setNote(id,val){const r=allRows.find(r=>r.id===id);if(r)r.notes=val;}
+function setNote(id,val){
+  const r=allRows.find(r=>r.id===id);
+  if(r)r.notes=val;
+  // Don't re-render table on every keystroke — notes are saved to memory immediately
+}
 function setGST(id,val){
   const r=allRows.find(r=>r.id===id);
   if(r){r.gstIncluded=val;r.gstAmt=val==='yes'?+(r.amount/11).toFixed(2):0;}
@@ -958,7 +1398,9 @@ function attachReceipt(id,input){
   reader.onload=e=>{
     const r=allRows.find(r=>r.id===id);
     if(r){r.receiptFile={name:file.name,type:file.type,data:e.target.result};r.receipt='Yes';}
-    input.value='';renderTable();toast('✓ Receipt attached: '+file.name);
+    input.value='';renderTable();
+    if(driveToken)driveSaveSession();
+    toast('✓ Receipt attached: '+file.name);
   };
   reader.readAsDataURL(file);
 }
@@ -967,209 +1409,290 @@ function viewReceipt(id){
   const r=allRows.find(r=>r.id===id);if(!r||!r.receiptFile)return;
   document.getElementById('rcpt-modal-name').textContent=r.receiptFile.name;
   const c=document.getElementById('rcpt-modal-content');
-  if(r.receiptFile.type.startsWith('image/'))c.innerHTML=`<img class="rcpt-modal-img" src="${r.receiptFile.data}">`;
-  else if(r.receiptFile.type==='application/pdf')c.innerHTML=`<iframe class="rcpt-modal-pdf" src="${r.receiptFile.data}"></iframe>`;
-  else c.innerHTML=`<p style="color:var(--muted);font-size:13px;padding:1rem 0">Preview unavailable. <a href="${r.receiptFile.data}" download="${esc(r.receiptFile.name)}" style="color:var(--accent)">Download</a></p>`;
+  if(!r.receiptFile.data||r.receiptFile.stripped){
+    c.innerHTML=`<p style="color:var(--muted);font-size:13px;padding:1rem 0">⚠ File preview not available — this receipt was stored in a local backup that ran out of space.<br><br>The filename <strong>${esc(r.receiptFile.name)}</strong> is recorded. Re-attach the file using + Attach to restore the preview.</p>`;
+  } else if(r.receiptFile.type&&r.receiptFile.type.startsWith('image/')){
+    c.innerHTML=`<img class="rcpt-modal-img" src="${r.receiptFile.data}">`;
+  } else if(r.receiptFile.type==='application/pdf'){
+    c.innerHTML=`<iframe class="rcpt-modal-pdf" src="${r.receiptFile.data}"></iframe>`;
+  } else {
+    c.innerHTML=`<p style="color:var(--muted);font-size:13px;padding:1rem 0">Preview unavailable. <a href="${r.receiptFile.data}" download="${esc(r.receiptFile.name)}" style="color:var(--accent)">Download</a></p>`;
+  }
   document.getElementById('rcpt-modal').classList.add('open');
 }
 function closeModal(){document.getElementById('rcpt-modal').classList.remove('open');document.getElementById('rcpt-modal-content').innerHTML='';}
 
-// ── Auto-backup to localStorage ───────────────────────────────────────────────
-function startAutoBackup(){
-  if(autoBackupTimer)clearInterval(autoBackupTimer);
-  autoBackupTimer=setInterval(()=>{
-    if(!allRows.length)return;
-    try{
-      const payload=JSON.stringify({version:3,savedAt:new Date().toISOString(),sessionName,
-        rows:allRows.map(r=>({...r,date:r.date instanceof Date?r.date.toISOString():r.date})),
-        rules});
-      localStorage.setItem('anz_tracker_autosave',payload);
-      const dot=document.getElementById('backup-dot');
-      dot.classList.add('flash');setTimeout(()=>dot.classList.remove('flash'),1200);
-    }catch(e){/* quota exceeded – silently skip */}
-  },30000);
+// ── Mobile menu ───────────────────────────────────────────────────────────────
+function toggleMobileMenu(){
+  const menu=document.getElementById('mobile-menu');
+  menu.classList.toggle('open');
 }
-
-function checkAutoBackup(){
-  try{
-    const saved=localStorage.getItem('anz_tracker_autosave');
-    if(!saved)return;
-    const d=JSON.parse(saved);
-    if(!d.rows||!d.rows.length)return;
-    const age=Math.round((Date.now()-new Date(d.savedAt).getTime())/60000);
-    if(confirm(`Auto-backup found from ${age} minute${age!==1?'s':''} ago (${d.rows.length} transactions).\n\nRestore it?`)){
-      restoreFromBackup(d);
-    }
-  }catch(e){}
+function closeMobileMenu(){
+  document.getElementById('mobile-menu').classList.remove('open');
 }
-
-function restoreFromBackup(d){
-  allRows=d.rows.map(r=>{
-    let dt=r.date;
-    if(typeof dt==='string'){const m=dt.match(/^(\d{4})-(\d{2})-(\d{2})/);dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(dt);}
-    return{...r,date:dt,bpType:r.bpType||'business',isDup:r.isDup||false,autoCat:r.autoCat||false};
-  });
-  if(d.rules&&Array.isArray(d.rules))rules=d.rules;
-  sessionName=d.sessionName||'auto-restored';
-  detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();startAutoBackup();
-  toast('✓ Auto-backup restored — '+allRows.length+' transactions');
-}
-
-// ── App state ─────────────────────────────────────────────────────────────────
-function showApp(){
-  document.getElementById('upload-section').style.display='none';
-  document.getElementById('app-section').style.display='block';
-  ['btn-rules','btn-load','btn-save','btn-csv','btn-xl','btn-newfile'].forEach(id=>document.getElementById(id).style.display='inline-block');
-}
-function resetAll(){
-  if(autoBackupTimer)clearInterval(autoBackupTimer);
-  allRows=[];selectedIds.clear();showDupsOnly=false;dupDismissed=false;autocatDismissed=false;autoCatSuggestions=[];
-  document.getElementById('upload-section').style.display='flex';
-  document.getElementById('app-section').style.display='none';
-  ['btn-rules','btn-load','btn-save','btn-csv','btn-xl','btn-newfile'].forEach(id=>document.getElementById(id).style.display='none');
-  ['file-input','session-input'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('error-banner').style.display='none';
-  document.getElementById('dup-banner').classList.remove('visible');
-  document.getElementById('autocat-banner').classList.remove('visible');
-  localStorage.removeItem('anz_tracker_autosave');
-}
-function showError(msg,inApp){const e=document.getElementById(inApp?'error-banner-app':'error-banner');e.textContent='⚠ '+msg;e.style.display='block';}
-function buildCatFilter(){
-  const s=document.getElementById('cat-filter');
-  s.innerHTML='<option value="">All categories</option>';
-  CATS.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;s.appendChild(o);});
-  const u=document.createElement('option');u.value='__none__';u.textContent='— Uncategorised';s.appendChild(u);
-}
-
-// ── Session save/load ─────────────────────────────────────────────────────────
-function saveSession(){
-  if(!allRows.length)return;
-  const payload={version:3,savedAt:new Date().toISOString(),sessionName,rules,
-    rows:allRows.map(r=>({...r,date:r.date instanceof Date?r.date.toISOString():r.date}))};
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));
-  a.download='ANZ_Session_'+new Date().toISOString().slice(0,10)+'.json';
-  a.click();
-  toast('✓ Session saved — store in Google Drive, Dropbox or iCloud');
-}
-function loadSession(file){
-  if(!file)return;
-  const r=new FileReader();
-  r.onload=e=>{
-    try{
-      const d=JSON.parse(e.target.result);
-      if(!d.rows||!Array.isArray(d.rows))throw new Error('Invalid session file.');
-      allRows=d.rows.map(r=>{
-        let dt=r.date;
-        if(typeof dt==='string'){const m=dt.match(/^(\d{4})-(\d{2})-(\d{2})/);dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(dt);}
-        return{...r,date:dt,bpType:r.bpType||'business',isDup:r.isDup||false,autoCat:r.autoCat||false};
-      });
-      if(d.rules&&Array.isArray(d.rules))rules=d.rules;
-      sessionName=d.sessionName||file.name.replace('.json','');
-      detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();startAutoBackup();
-      toast('✓ Session restored — '+allRows.length+' transactions');
-    }catch(err){showError('Could not load session: '+err.message,false);}
-  };
-  r.readAsText(file);
-  document.getElementById('session-input').value='';
-}
-
-// ── Export CSV ────────────────────────────────────────────────────────────────
-function exportCSV(){
-  const rows=getFiltered();
-  const lines=[['Date','Description','Amount','Type','B/P','GST Included','GST Amount','Net (ex GST)','Category','Receipt','Notes'].join(',')];
-  rows.forEach(r=>{
-    const biz=r.bpType==='business';
-    const net=r.isDebit&&biz?(r.amount-r.gstAmt).toFixed(2):r.amount.toFixed(2);
-    lines.push([fmtDate(r.date),`"${r.description.replace(/"/g,'""')}"`,r.amount.toFixed(2),
-      r.isDebit?'Debit':'Credit',biz?'Business':'Personal',
-      r.isDebit?r.gstIncluded:'N/A',r.isDebit&&biz?r.gstAmt.toFixed(2):'0.00',
-      net,`"${r.category}"`,r.receipt,`"${(r.notes||'').replace(/"/g,'""')}"`].join(','));
-  });
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));
-  a.download='anz_purchases.csv';a.click();
-}
-
-// ── Export Excel ──────────────────────────────────────────────────────────────
-function exportExcel(){
-  const bizRows=allRows.filter(r=>r.bpType==='business');
-  const wb=XLSX.utils.book_new();
-  const hS={font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10},fill:{fgColor:{rgb:'002E5D'}},alignment:{horizontal:'center',vertical:'center',wrapText:true}};
-  const tealH={font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10},fill:{fgColor:{rgb:'007B8A'}},alignment:{horizontal:'center'}};
-
-  // Transactions
-  const txH=['Date','Description','Amount','Type','B/P','GST Inc.','GST Amt','Net (ex GST)','Category','Receipt','Notes'];
-  const txD=[txH];
-  allRows.forEach(r=>{
-    const biz=r.bpType==='business';
-    const net=r.isDebit&&biz?+(r.amount-r.gstAmt).toFixed(2):+r.amount.toFixed(2);
-    txD.push([fmtDate(r.date),r.description+(r.isDup?' [DUP?]':''),r.isDebit?+r.amount.toFixed(2):0,
-      r.isDebit?'Debit':'Credit',biz?'Business':'Personal',
-      r.isDebit?(r.gstIncluded==='yes'?'Yes':'No'):'N/A',
-      r.isDebit&&biz?+r.gstAmt.toFixed(2):0,net,
-      r.category||'',r.receiptFile?'Yes — '+r.receiptFile.name:r.receipt,r.notes||'']);
-  });
-  const tA=+bizRows.filter(r=>r.isDebit).reduce((s,r)=>s+r.amount,0).toFixed(2);
-  const tG=+bizRows.filter(r=>r.isDebit&&r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);
-  txD.push(['BUSINESS TOTAL','',tA,'','','',tG,+(tA-tG).toFixed(2),'','','']);
-  const txWs=XLSX.utils.aoa_to_sheet(txD);
-  txWs['!cols']=[{wch:13},{wch:44},{wch:12},{wch:10},{wch:10},{wch:10},{wch:11},{wch:14},{wch:24},{wch:16},{wch:28}];
-  ['A','B','C','D','E','F','G','H','I','J','K'].forEach(c=>{if(txWs[c+'1'])txWs[c+'1'].s=hS;});
-  XLSX.utils.book_append_sheet(wb,txWs,'Transactions');
-
-  // BAS
-  const fyYr=parseInt(document.getElementById('bas-fy-sel').value);
-  const s2=fyYr-1;
-  const qs=[
-    {l:'Q1',d:`1 Jul ${s2} – 30 Sep ${s2}`,from:new Date(s2,6,1),to:new Date(s2,8,30,23,59,59)},
-    {l:'Q2',d:`1 Oct ${s2} – 31 Dec ${s2}`,from:new Date(s2,9,1),to:new Date(s2,11,31,23,59,59)},
-    {l:'Q3',d:`1 Jan ${fyYr} – 31 Mar ${fyYr}`,from:new Date(fyYr,0,1),to:new Date(fyYr,2,31,23,59,59)},
-    {l:'Q4',d:`1 Apr ${fyYr} – 30 Jun ${fyYr}`,from:new Date(fyYr,3,1),to:new Date(fyYr,5,30,23,59,59)},
-  ];
-  const basD=[[`BAS SUMMARY — FY ${s2}–${fyYr} (Business Transactions Only)`],
-    ['Generated:',new Date().toLocaleDateString('en-AU')],[''],
-    ['Quarter','Period','# Transactions','Total Spend (incl. GST)','GST Claimable (1B)','Net (ex GST)']];
-  qs.forEach(q=>{
-    const qr=bizRows.filter(r=>{const d=r.date instanceof Date?r.date:null;return r.isDebit&&d&&!isNaN(d)&&d>=q.from&&d<=q.to;});
-    const a=+qr.reduce((s,r)=>s+r.amount,0).toFixed(2);
-    const g=+qr.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);
-    basD.push([q.l,q.d,qr.length,a,g,+(a-g).toFixed(2)]);
-  });
-  basD.push(['FULL YEAR','All quarters',bizRows.filter(r=>r.isDebit).length,tA,tG,+(tA-tG).toFixed(2)]);
-  basD.push([''],['Note: GST estimates only (1/11th). Confirm with accountant before lodging BAS.']);
-  const basWs=XLSX.utils.aoa_to_sheet(basD);
-  basWs['!cols']=[{wch:10},{wch:28},{wch:14},{wch:24},{wch:22},{wch:18}];
-  if(basWs['A1'])basWs['A1'].s={font:{bold:true,sz:12,color:{rgb:'FFFFFF'},name:'Arial'},fill:{fgColor:{rgb:'002E5D'}},alignment:{horizontal:'center'}};
-  ['A','B','C','D','E','F'].forEach(c=>{if(basWs[c+'4'])basWs[c+'4'].s=tealH;});
-  XLSX.utils.book_append_sheet(wb,basWs,'BAS Summary');
-
-  // By Category
-  const sumD=[['SPEND BY CATEGORY (Business Only)'],['Category','Total Spend','GST Est.','Net (ex GST)','# Transactions']];
-  CATS.forEach(cat=>{
-    const cr=bizRows.filter(r=>r.isDebit&&r.category===cat);if(!cr.length)return;
-    const a=+cr.reduce((s,r)=>s+r.amount,0).toFixed(2);
-    const g=+cr.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);
-    sumD.push([cat,a,g,+(a-g).toFixed(2),cr.length]);
-  });
-  const uc=bizRows.filter(r=>r.isDebit&&!r.category);
-  if(uc.length){const a=+uc.reduce((s,r)=>s+r.amount,0).toFixed(2);const g=+uc.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);sumD.push(['— Uncategorised',a,g,+(a-g).toFixed(2),uc.length]);}
-  const sumWs=XLSX.utils.aoa_to_sheet(sumD);
-  sumWs['!cols']=[{wch:34},{wch:16},{wch:14},{wch:14},{wch:14}];
-  ['A','B','C','D','E'].forEach(c=>{if(sumWs[c+'2'])sumWs[c+'2'].s=tealH;});
-  XLSX.utils.book_append_sheet(wb,sumWs,'By Category');
-
-  XLSX.writeFile(wb,'ANZ_Purchases_'+new Date().toISOString().slice(0,10)+'.xlsx');
-  toast('✓ Excel downloaded — Transactions · BAS Summary · By Category');
-}
-
-// ── Init ──────────────────────────────────────────────────────────────────────
-buildBulkCatSel();
-updatePeriodLabels();
-// Check for auto-backup on page load
-window.addEventListener('load',()=>{
-  if(!allRows.length)checkAutoBackup();
+// Close menu when tapping outside
+document.addEventListener('click',e=>{
+  const menu=document.getElementById('mobile-menu');
+  const btn=document.getElementById('hamburger-btn');
+  if(menu.classList.contains('open')&&!menu.contains(e.target)&&!btn.contains(e.target)){
+    menu.classList.remove('open');
+  }
 });
-</script>
-</body>
-</html>
+function syncMobileMenu(hasData){
+  // Show/hide data-dependent menu items
+  ['mmenu-rules','mmenu-load','mmenu-save','mmenu-sep1'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.style.display=hasData?'':'none';
+  });
+}
+function syncDriveMobileStatus(state,text){
+  const dot=document.getElementById('drive-dot-mobile');
+  const txt=document.getElementById('drive-status-text-mobile');
+  const wrap=document.getElementById('drive-status-mobile');
+  const signinBtn=document.getElementById('mmenu-drive');
+  const signoutBtn=document.getElementById('mmenu-signout');
+  if(dot&&txt&&wrap){
+    wrap.style.display='flex';
+    dot.className='drive-dot '+state;
+    txt.textContent=text;
+  }
+  if(signinBtn)signinBtn.style.display='none';
+  if(signoutBtn)signoutBtn.style.display='block';
+}
+
+// ── Google Drive Sync ─────────────────────────────────────────────────────────
+const CLIENT_ID='432426606260-hs07g9kdggjq0gq17tsmscuub2fv3325.apps.googleusercontent.com';
+const SCOPES='https://www.googleapis.com/auth/drive.appdata';
+const DRIVE_FILE_NAME='anz_tracker_session.json';
+let driveToken=null,driveFileId=null,driveSyncTimer=null,drivePollTimer=null,lastSavedAt=null;
+
+function driveSetStatus(state,text){
+  const wrap=document.getElementById('drive-status');
+  const dot=document.getElementById('drive-dot');
+  const txt=document.getElementById('drive-status-text');
+  wrap.classList.add('vis');dot.className='drive-dot '+state;txt.textContent=text;
+  syncDriveMobileStatus(state,text);
+}
+
+function driveSignIn(silent=false){
+  if(typeof google==='undefined'||!google.accounts){
+    if(silent){setTimeout(()=>driveSignIn(true),500);return;}
+    toast('⚠ Google library not loaded yet — try again');return;
+  }
+
+  let timeoutId=null;
+
+  const client=google.accounts.oauth2.initTokenClient({
+    client_id:CLIENT_ID,scope:SCOPES,
+    callback:(resp)=>{
+      if(timeoutId)clearTimeout(timeoutId);
+      if(resp.error){
+        showDriveSignInButton();
+        if(!silent)toast('⚠ Google sign-in failed: '+resp.error);
+        return;
+      }
+      driveToken=resp.access_token;
+      localStorage.setItem('drive_was_signed_in','true');
+      document.getElementById('btn-drive-signin').classList.remove('vis');
+      document.getElementById('btn-drive-signout').classList.add('vis');
+      document.getElementById('reconnect-banner').classList.remove('visible');
+      const mSignin=document.getElementById('mmenu-drive');
+      const mSignout=document.getElementById('mmenu-signout');
+      if(mSignin)mSignin.style.display='none';
+      if(mSignout)mSignout.style.display='block';
+      driveSetStatus('syncing','Loading from Drive…');
+      driveLoadSession();
+    }
+  });
+
+  if(silent){
+    // Silent: no prompt, but add a 6-second timeout in case callback never fires
+    timeoutId=setTimeout(()=>{
+      showDriveSignInButton();
+    },6000);
+    client.requestAccessToken({prompt:''});
+  } else {
+    client.requestAccessToken();
+  }
+}
+
+function showDriveSignInButton(){
+  document.getElementById('drive-status').classList.remove('vis');
+  if(allRows.length){
+    // User already has data — show subtle reconnect banner, not the full sign-in button
+    document.getElementById('reconnect-banner').classList.add('visible');
+    driveSetStatus('error','Reconnect needed');
+    return;
+  }
+  if(window.location.protocol==='https:'){
+    document.getElementById('btn-drive-signin').classList.add('vis');
+    const mBtn=document.getElementById('mmenu-drive');
+    if(mBtn)mBtn.style.display='block';
+  }
+  if(!allRows.length)checkAutoBackup();
+}
+
+function driveSignOut(){
+  if(driveToken)google.accounts.oauth2.revoke(driveToken,()=>{});
+  driveToken=null;driveFileId=null;lastSavedAt=null;
+  localStorage.removeItem('drive_was_signed_in');
+  if(driveSyncTimer)clearInterval(driveSyncTimer);
+  if(drivePollTimer)clearInterval(drivePollTimer);
+  document.getElementById('btn-drive-signin').classList.add('vis');
+  document.getElementById('btn-drive-signout').classList.remove('vis');
+  document.getElementById('drive-status').classList.remove('vis');
+  toast('Disconnected from Google Drive');
+}
+
+async function driveLoadSessionSilent(){
+  // Reload data from Drive without disrupting the UI
+  try{
+    const dl=await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
+      {headers:{Authorization:'Bearer '+driveToken}});
+    if(!dl.ok)return;
+    const d=await dl.json();
+    if(!d.rows||!Array.isArray(d.rows))return;
+    allRows=d.rows.map(r=>{
+      let dt=r.date;
+      if(typeof dt==='string'){const m=dt.match(/^(\d{4})-(\d{2})-(\d{2})/);dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(dt);}
+      return{...r,date:dt,bpType:r.bpType||'business',isDup:r.isDup||false,autoCat:r.autoCat||false};
+    });
+    if(d.rules&&Array.isArray(d.rules))rules=d.rules;
+    lastSavedAt=d.savedAt;
+    detectDuplicates();buildCatFilter();buildBulkCatSel();updateKPIs();renderTable();renderBAS();
+    const t=new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
+    driveSetStatus('synced','Updated from another device · '+t);
+    toast('↻ Data updated from another device');
+    startDriveSyncTimer();
+    if(!drivePollTimer)startDrivePollTimer(); // restart poll if it stopped
+  }catch(e){driveSetStatus('error','Sync error');}
+}
+
+async function driveLoadSession(){
+  try{
+    driveSetStatus('syncing','Loading…');
+    const res=await fetch(
+      `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${DRIVE_FILE_NAME}'&fields=files(id,modifiedTime)`,
+      {headers:{Authorization:'Bearer '+driveToken}});
+    const data=await res.json();
+    if(!data.files||!data.files.length){
+      driveSetStatus('synced','Drive ready');
+      document.getElementById('btn-drive-signin').classList.remove('vis');
+      toast('✓ Connected to Google Drive — no previous session found');
+      startDriveSyncTimer();return;
+    }
+    driveFileId=data.files[0].id;
+    const dl=await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
+      {headers:{Authorization:'Bearer '+driveToken}});
+    if(!dl.ok)throw new Error('Download failed');
+    const d=await dl.json();
+    if(!d.rows||!Array.isArray(d.rows))throw new Error('Invalid data in Drive');
+    allRows=d.rows.map(r=>{
+      let dt=r.date;
+      if(typeof dt==='string'){const m=dt.match(/^(\d{4})-(\d{2})-(\d{2})/);dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(dt);}
+      return{...r,date:dt,bpType:r.bpType||'business',isDup:r.isDup||false,autoCat:r.autoCat||false};
+    });
+    if(d.rules&&Array.isArray(d.rules))rules=d.rules;
+    sessionName=d.sessionName||DRIVE_FILE_NAME;
+    detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();
+    const ago=Math.round((Date.now()-new Date(d.savedAt).getTime())/60000);
+    driveSetStatus('synced','Synced · '+(ago<1?'just now':ago+'m ago'));
+    toast('✓ Loaded from Google Drive — '+allRows.length+' transactions');
+    lastSavedAt=d.savedAt;
+    startDriveSyncTimer();
+    startDrivePollTimer();
+  }catch(e){driveSetStatus('error','Sync error');toast('⚠ Drive error: '+e.message);}
+}
+
+async function refreshDriveTokenIfNeeded(){
+  // Silently get a fresh token — GIS handles this internally if session is active
+  return new Promise(res=>{
+    try{
+      const client=google.accounts.oauth2.initTokenClient({
+        client_id:CLIENT_ID,scope:SCOPES,
+        callback:(resp)=>{
+          if(!resp.error&&resp.access_token){driveToken=resp.access_token;}
+          res();
+        }
+      });
+      client.requestAccessToken({prompt:''});
+    }catch(e){res();}
+  });
+}
+
+async function driveSaveSession(){
+  if(!driveToken||!allRows.length)return;
+  driveSetStatus('syncing','Saving…');
+  try{
+    const savedAt=new Date().toISOString(); // capture once so payload and lastSavedAt are identical
+    let rowsToSave=serializeRows(allRows);
+    let payload=JSON.stringify({version:3,savedAt,sessionName,rules,rows:rowsToSave});
+    // If payload exceeds 4MB, strip base64 receipt data (keeps filenames)
+    if(payload.length>4*1024*1024){
+      rowsToSave=rowsToSave.map(r=>r.receiptFile?{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,data:null,stripped:true}}:r);
+      payload=JSON.stringify({version:3,savedAt,sessionName,rules,rows:rowsToSave,receiptsStripped:true});
+    }
+    if(driveFileId){
+      const patchRes=await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`,{
+        method:'PATCH',headers:{Authorization:'Bearer '+driveToken,'Content-Type':'application/json'},body:payload});
+      if(patchRes.status===401){
+        // Token expired — refresh and retry once
+        await refreshDriveTokenIfNeeded();
+        const retry=await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`,{
+          method:'PATCH',headers:{Authorization:'Bearer '+driveToken,'Content-Type':'application/json'},body:payload});
+        if(!retry.ok)throw new Error('Save failed after token refresh ('+retry.status+')');
+      }else if(!patchRes.ok){
+        throw new Error('Save failed ('+patchRes.status+')');
+      }
+    }else{
+      const form=new FormData();
+      form.append('metadata',new Blob([JSON.stringify({name:DRIVE_FILE_NAME,parents:['appDataFolder']})],{type:'application/json'}));
+      form.append('file',new Blob([payload],{type:'application/json'}));
+      const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{
+        method:'POST',headers:{Authorization:'Bearer '+driveToken},body:form});
+      if(!r.ok)throw new Error('Create failed');
+      driveFileId=(await r.json()).id;
+    }
+    const t=new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
+    driveSetStatus('synced','Synced · '+t);
+    lastSavedAt=savedAt;
+    try{localStorage.setItem('anz_tracker_autosave',payload);}catch(e2){}
+  }catch(e){
+    driveSetStatus('error','Sync failed — saved locally');
+    const fallback={version:3,savedAt:new Date().toISOString(),sessionName,rules,rows:allRows.map(r=>r.receiptFile?{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,data:null,stripped:true}}:r).map(r=>({...r,date:dateToStr(r.date)}))};
+    try{localStorage.setItem('anz_tracker_autosave',JSON.stringify(fallback));}catch(e2){}
+  }
+}
+
+function startDriveSyncTimer(){
+  if(driveSyncTimer)clearInterval(driveSyncTimer);
+  driveSyncTimer=setInterval(()=>{if(driveToken&&allRows.length)driveSaveSession();},30000);
+}
+
+let drivePollRunning=false;
+function startDrivePollTimer(){
+  if(drivePollTimer)clearInterval(drivePollTimer);
+  drivePollTimer=setInterval(async()=>{
+    if(!driveToken||!driveFileId||drivePollRunning)return;
+    drivePollRunning=true;
+    try{
+      // Just fetch the file metadata (modifiedTime) — very lightweight
+      const res=await fetch(
+        `https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=modifiedTime`,
+        {headers:{Authorization:'Bearer '+driveToken}});
+      if(!res.ok)return;
+      const meta=await res.json();
+      const driveModified=meta.modifiedTime;
+      // If Drive is newer than what we last saved/loaded, another device updated it
+      if(lastSavedAt&&driveModified>lastSavedAt){
+        driveSetStatus('syncing','Updating from another device…');
+        await driveLoadSessionSilent();
+      }
+    }catch(e){/* network blip — ignore */}
+    finally{drivePollRunning=false;}
+  },60000); // check every 60 seconds
+}
+
+// ── Local auto-backup fallback ────────────────────────────────────────────────
+function startAutoBackup(){
+  if(driveToken){start
