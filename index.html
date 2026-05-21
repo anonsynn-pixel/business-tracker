@@ -2,8 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ANZ Business Purchase Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ANZ Business Tracker</title>
+<meta name="description" content="Business purchase tracker with ANZ bank import, receipt management and BAS summary">
+<meta name="theme-color" content="#002e5d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Biz Tracker">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23002e5d'/%3E%3Crect x='15' y='35' width='70' height='45' rx='8' fill='none' stroke='%2300a3ad' stroke-width='6'/%3E%3Cpath d='M15 50h70' stroke='%2300a3ad' stroke-width='6'/%3E%3C/svg%3E">
+<link id="pwa-manifest" rel="manifest">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -31,6 +38,10 @@ header{background:var(--navy);padding:0 1.5rem;display:flex;align-items:center;j
 .hbtn-save:hover{background:var(--teal);}
 .hbtn-green{background:var(--green);color:#fff;}
 .hbtn-green:hover{background:#155f44;}
+.hbtn-purple{background:#8e44ad;color:#fff;}
+.hbtn-purple:hover{background:#6c3483;}
+/* Merchant cleanup */
+.desc-original{font-size:10px;color:var(--muted);font-family:var(--mono);display:block;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
 /* ── Toast ── */
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--navy);color:#fff;font-family:var(--sans);font-size:13px;padding:10px 22px;border-radius:24px;box-shadow:0 4px 20px rgba(0,0,0,0.25);transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1);z-index:9999;white-space:nowrap;}
@@ -371,7 +382,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.4);letter-spacing:0.04em;padding-left:2px;">v3.1</span>
+    <span style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.4);letter-spacing:0.04em;padding-left:2px;">v3.5</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -390,6 +401,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <button class="hbtn hbtn-save"  id="btn-save"    onclick="saveSession()">↓ Save session</button>
     <button class="hbtn hbtn-ghost" id="btn-csv"     onclick="exportCSV()">CSV</button>
     <button class="hbtn hbtn-green" id="btn-xl"      onclick="exportExcel()">Export .xlsx</button>
+    <button class="hbtn hbtn-purple" id="btn-accountant" onclick="exportAccountantReport()">📋 Accountant</button>
     <button class="hbtn hbtn-ghost" id="btn-newfile" onclick="resetAll()">New file</button>
     <button class="hbtn" id="btn-debug" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.35)!important;color:rgba(255,255,255,0.8);font-size:12px;padding:6px 10px;" onclick="openDebugPanel()" title="Debug log">🐛</button>
     <!-- Hamburger (mobile only) -->
@@ -469,6 +481,10 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
       </div>
       <div class="kpi-card"><div class="kpi-label">Personal (excluded)</div><div class="kpi-value" id="kpi-personal" style="color:var(--personal)">0</div></div>
       <div class="kpi-card"><div class="kpi-label">Credits</div><div class="kpi-value green" id="kpi-credits">$0.00</div></div>
+      <div class="kpi-card" style="cursor:pointer" onclick="document.getElementById('receipt-filter').value='missing';renderTable()" title="Click to show missing receipts">
+        <div class="kpi-label">Missing Receipts</div>
+        <div class="kpi-value" id="kpi-missing-rcpt" style="color:var(--orange)">0</div>
+      </div>
     </div>
 
     <!-- BAS Panel -->
@@ -540,7 +556,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
 
     <!-- Toolbar -->
     <div class="toolbar">
-      <input type="text" id="search-input" placeholder="Search description or notes…" oninput="renderTable()">
+      <input type="text" id="search-input" placeholder="Search description or notes…" oninput="onSearchInput()">
       <div class="t-sep"></div>
       <select id="period-filter" onchange="onPeriodChange()">
         <option value="all">All dates</option>
@@ -574,7 +590,16 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
         <option value="business">Business only</option>
         <option value="personal">Personal only</option>
       </select>
+      <select id="receipt-filter" onchange="renderTable()">
+        <option value="">All receipts</option>
+        <option value="missing">⚠ Missing receipt</option>
+        <option value="attached">✓ Has receipt</option>
+      </select>
       <span class="toolbar-label" id="row-count-label"></span>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap;">
+        <input type="checkbox" id="merchant-cleanup" onchange="renderTable()" style="width:13px;height:13px;accent-color:var(--navy);" checked>
+        Clean names
+      </label>
       <button class="btn-action" onclick="resetAll()">+ New file</button>
     </div>
 
@@ -751,7 +776,11 @@ let rules=[...DEFAULT_RULES];
 let autoBackupTimer=null;
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
-let _toastTimer=null;
+let _searchTimer=null;
+function onSearchInput(){
+  clearTimeout(_searchTimer);
+  _searchTimer=setTimeout(()=>renderTable(),180);
+}
 function toast(msg,dur=2800){
   const e=document.getElementById('toast');
   if(_toastTimer)clearTimeout(_toastTimer);
@@ -906,8 +935,8 @@ function parseCSV(text){
 }
 
 function finishLoad(msg){
-  // Reset dismissal flags and stale selections
-  dupDismissed=false;
+  // Reset dismissal flags — but respect persisted dup dismissed state
+  try{dupDismissed=localStorage.getItem('anz_dup_dismissed')==='true';}catch(e){dupDismissed=false;}
   autocatDismissed=false;
   showDupsOnly=false;
   selectedIds.clear();
@@ -930,6 +959,10 @@ function detectDuplicates(){
   });
   dups.forEach(id=>{const r=allRows.find(r=>r.id===id);if(r)r.isDup=true;});
   const n=dups.size;
+  // Read persisted dismissed state
+  if(!dupDismissed){
+    try{dupDismissed=localStorage.getItem('anz_dup_dismissed')==='true';}catch(e){}
+  }
   if(n>0&&!dupDismissed){
     document.getElementById('dup-text').innerHTML=`<strong>⚠ ${n} possible duplicate${n>1?'s':''} detected</strong> — same date, amount and description. Review and mark personal or ignore.`;
     document.getElementById('dup-banner').classList.add('visible');
@@ -942,7 +975,16 @@ function toggleDupFilter(){
   b.classList.toggle('active',showDupsOnly);
   renderTable();
 }
-function dismissDups(){dupDismissed=true;document.getElementById('dup-banner').classList.remove('visible');showDupsOnly=false;renderTable();}
+function dismissDups(){
+  dupDismissed=true;
+  // Persist so it survives refresh, session load, and Drive restore
+  try{localStorage.setItem('anz_dup_dismissed','true');}catch(e){}
+  document.getElementById('dup-banner').classList.remove('visible');
+  showDupsOnly=false;
+  const btn=document.getElementById('dup-review-btn');
+  if(btn){btn.textContent='Show duplicates';btn.classList.remove('active');}
+  renderTable();
+}
 
 // ── Auto-detect / rules ───────────────────────────────────────────────────────
 function runAutoCatSilent(){
@@ -993,6 +1035,7 @@ function applyAutoCat(){
 }
 function dismissAutocat(){
   autocatDismissed=true;
+  try{localStorage.setItem('anz_autocat_dismissed','true');}catch(e){}
   // Mark suggested rows so they won't be re-suggested after next upload
   autoCatSuggestions.forEach(s=>{
     const r=allRows.find(r=>r.id===s.id);
@@ -1096,6 +1139,7 @@ function getFiltered(){
   const cat=document.getElementById('cat-filter').value;
   const typ=document.getElementById('type-filter').value;
   const bp=document.getElementById('bp-filter').value;
+  const rcpt=document.getElementById('receipt-filter').value;
   const range=getDateRange();
   return allRows.filter(r=>{
     if(showDupsOnly&&!r.isDup)return false;
@@ -1106,6 +1150,8 @@ function getFiltered(){
     if(typ==='credit'&&r.isDebit)return false;
     if(bp==='business'&&r.bpType!=='business')return false;
     if(bp==='personal'&&r.bpType!=='personal')return false;
+    if(rcpt==='missing'&&r.receiptFile)return false;
+    if(rcpt==='attached'&&!r.receiptFile)return false;
     if(!inRange(r,range))return false;
     return true;
   });
@@ -1122,6 +1168,9 @@ function updateKPIs(){
   document.getElementById('kpi-count').textContent=biz.length;
   document.getElementById('kpi-personal').textContent=allRows.filter(r=>r.bpType==='personal').length;
   document.getElementById('kpi-credits').textContent=fmtAUD(allRows.filter(r=>!r.isDebit).reduce((s,r)=>s+r.amount,0));
+  const missingRcpt=allRows.filter(r=>r.isDebit&&r.bpType==='business'&&!r.receiptFile).length;
+  const mrEl=document.getElementById('kpi-missing-rcpt');
+  if(mrEl){mrEl.textContent=missingRcpt;mrEl.style.color=missingRcpt>0?'var(--orange)':'var(--green)';}
   updateUncatBadge();
   if(analyticsOpen)renderChart();
 }
@@ -1249,10 +1298,11 @@ function renderTable(){
     const gstAmt=r.isDebit&&r.gstIncluded==='yes'&&!isP(r)?`<td class="td-amount" style="color:var(--gold)">${fmtAUD(r.gstAmt)}</td>`:`<td class="td-mono" style="color:#ccc">—</td>`;
     const rcpt=r.receiptFile?`<div class="rcpt-cell"><div class="rcpt-badge" onclick="viewReceipt('${r.id}')"><span>${esc(r.receiptFile.name)}</span></div><span class="rcpt-remove" onclick="removeReceipt('${r.id}')">✕</span></div>`:`<div class="rcpt-cell"><button class="rcpt-btn" onclick="document.getElementById('rf_${r.id}').click()">+ Attach</button><input type="file" id="rf_${r.id}" accept="image/*,.pdf" style="display:none" onchange="attachReceipt('${r.id}',this)"></div>`;
     const descExtra=(r.isDup?` <span class="dup-flag">⚠ dup</span>`:'')+(r.autoCat?` <span class="autocat-flag">✦ auto</span>`:'');
+    const{main:dispMain,sub:dispSub}=getDisplayDesc(r);
     return`<tr class="${cls}">
       <td class="td-check"><input type="checkbox" ${isSel?'checked':''} onchange="toggleRow('${r.id}',this.checked)"></td>
       <td class="td-mono">${fmtDate(r.date)}</td>
-      <td class="td-desc"><span>${esc(r.description)}${descExtra}</span></td>
+      <td class="td-desc"><span>${esc(dispMain)}${descExtra}</span>${dispSub?`<span class="desc-original" title="${esc(dispSub)}">${esc(dispSub)}</span>`:''}</td>
       ${amtCell}${bpCell}${gstCell}${gstAmt}
       <td><select class="cat-select" onchange="setCat('${r.id}',this.value)" ${isP(r)?'disabled':''}><option value="">— Select —</option>${catOpts(r)}</select></td>
       <td>${rcpt}</td>
@@ -1265,9 +1315,10 @@ function renderTable(){
     const cls=r.isDup?'dup-card':isP(r)?'personal-card':'';
     const co2=CATS.map(c=>`<option value="${esc(c)}" ${r.category===c?'selected':''}>${esc(c)}</option>`).join('');
     const gl=r.isDebit&&r.gstIncluded==='yes'&&!isP(r)?`<div class="m-gst">GST est. ${fmtAUD(r.gstAmt)}</div>`:'';
+      const{main:mMain,sub:mSub}=getDisplayDesc(r);
     return`<div class="m-card ${cls}">
       <div class="m-card-top">
-        <div class="m-desc">${esc(r.description)}${r.isDup?' ⚠':''}</div>
+        <div class="m-desc">${esc(mMain)}${r.isDup?' ⚠':''}</div>
         <div class="m-amount ${r.isDebit?'':'credit'}">${r.isDebit?'':'+'}${fmtAUD(r.amount)}</div>
       </div>
       <div class="m-date">${fmtDate(r.date)}${isP(r)?' · <span style="color:var(--personal)">Personal</span>':''}</div>${gl}
@@ -1291,7 +1342,11 @@ function renderTable(){
 // ── Row setters ───────────────────────────────────────────────────────────────
 function setBP(id,val){const r=allRows.find(r=>r.id===id);if(!r)return;r.bpType=val;updateKPIs();renderTable();renderBAS();}
 function setCat(id,val){const r=allRows.find(r=>r.id===id);if(r){r.category=val;r.autoCat=false;}updateKPIs();}
-function setNote(id,val){const r=allRows.find(r=>r.id===id);if(r)r.notes=val;}
+function setNote(id,val){
+  const r=allRows.find(r=>r.id===id);
+  if(r)r.notes=val;
+  // Don't re-render table on every keystroke — notes are saved to memory immediately
+}
 function setGST(id,val){
   const r=allRows.find(r=>r.id===id);
   if(r){r.gstIncluded=val;r.gstAmt=val==='yes'?+(r.amount/11).toFixed(2):0;}
@@ -1635,7 +1690,7 @@ function checkAutoBackup(){
 function showApp(){
   document.getElementById('upload-section').style.display='none';
   document.getElementById('app-section').style.display='block';
-  ['btn-rules','btn-load','btn-save','btn-csv','btn-xl','btn-newfile','btn-debug'].forEach(id=>document.getElementById(id).style.display='inline-block');
+  ['btn-rules','btn-load','btn-save','btn-csv','btn-xl','btn-accountant','btn-newfile','btn-debug'].forEach(id=>document.getElementById(id).style.display='inline-block');
   // Hide go back button once they've committed to a new session
   const bb=document.getElementById('btn-go-back');
   if(bb){bb.style.display='none';bb._snapshot=null;}
@@ -1656,12 +1711,14 @@ function resetAll(){
   allRows=[];selectedIds.clear();showDupsOnly=false;dupDismissed=false;autocatDismissed=false;autoCatSuggestions=[];bulkItems=[];
   document.getElementById('upload-section').style.display='flex';
   document.getElementById('app-section').style.display='none';
-  ['btn-rules','btn-load','btn-save','btn-csv','btn-xl','btn-newfile','btn-debug'].forEach(id=>document.getElementById(id).style.display='none');
+  ['btn-rules','btn-load','btn-save','btn-csv','btn-xl','btn-accountant','btn-newfile','btn-debug'].forEach(id=>document.getElementById(id).style.display='none');
   ['file-input','session-input'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('error-banner').style.display='none';
   document.getElementById('dup-banner').classList.remove('visible');
   document.getElementById('autocat-banner').classList.remove('visible');
   localStorage.removeItem('anz_tracker_autosave');
+  localStorage.removeItem('anz_dup_dismissed');
+  localStorage.removeItem('anz_autocat_dismissed');
   if(driveToken){driveSetStatus('synced','Drive ready');}
   closeMobileMenu();syncMobileMenu(false);
 
@@ -2481,11 +2538,203 @@ document.addEventListener('DOMContentLoaded',()=>{
   canvas.addEventListener('mouseleave',()=>{if(tip)tip.style.display='none';});
 });
 
+// ── Merchant name cleanup ─────────────────────────────────────────────────────
+const MERCHANT_PREFIXES=[
+  /^VISA\s+DEBIT\s+PURCHASE\s+CARD\s*\d*\s*/i,
+  /^VISA\s+CREDIT\s+PURCHASE\s+CARD\s*\d*\s*/i,
+  /^EFTPOS\s+PURCHASE\s*/i,
+  /^MASTERCARD\s+PURCHASE\s*\d*\s*/i,
+  /^DIRECT\s+DEBIT\s+/i,
+  /^BPAY\s+/i,
+  /^ATM\s+WITHDRAWAL\s*/i,
+  /^INTERNET\s+BANKING\s+/i,
+  /^ANZ\s+INTERNET\s+BANKING\s*/i,
+];
+const LOCATION_SUFFIXES=[
+  /\s+(SYDNEY|MELBOURNE|BRISBANE|PERTH|ADELAIDE|CANBERRA|HOBART|DARWIN|NSW|VIC|QLD|WA|SA|ACT|TAS|NT)\s*$/i,
+  /\s+AU\s*$/i,
+];
+function cleanMerchant(desc){
+  let s=desc;
+  for(const re of MERCHANT_PREFIXES)s=s.replace(re,'');
+  for(const re of LOCATION_SUFFIXES)s=s.replace(re,'');
+  // Trim trailing location words like "HAWTHORN", "SOUTHBANK" (all-caps single words at end)
+  s=s.replace(/\s+[A-Z]{4,}\s*$/,'').trim();
+  return s||desc;
+}
+function getDisplayDesc(r){
+  const cleanup=document.getElementById('merchant-cleanup');
+  if(!cleanup||!cleanup.checked)return{main:r.description,sub:null};
+  const cleaned=cleanMerchant(r.description);
+  if(cleaned===r.description)return{main:r.description,sub:null};
+  return{main:cleaned,sub:r.description};
+}
+
+// ── PWA Setup ─────────────────────────────────────────────────────────────────
+function initPWA(){
+  const manifest={
+    name:'ANZ Business Tracker',short_name:'Biz Tracker',
+    description:'Business purchase tracker with ANZ import and BAS summary',
+    start_url:window.location.pathname,
+    display:'standalone',
+    background_color:'#f0f4f8',theme_color:'#002e5d',
+    orientation:'any',
+    icons:[
+      {src:"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23002e5d'/%3E%3Crect x='15' y='35' width='70' height='45' rx='8' fill='none' stroke='%2300a3ad' stroke-width='6'/%3E%3Cpath d='M15 50h70' stroke='%2300a3ad' stroke-width='6'/%3E%3C/svg%3E",
+        sizes:'192x192',type:'image/svg+xml',purpose:'any maskable'},
+      {src:"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23002e5d'/%3E%3Crect x='15' y='35' width='70' height='45' rx='8' fill='none' stroke='%2300a3ad' stroke-width='6'/%3E%3Cpath d='M15 50h70' stroke='%2300a3ad' stroke-width='6'/%3E%3C/svg%3E",
+        sizes:'512x512',type:'image/svg+xml',purpose:'any maskable'}
+    ]
+  };
+  const blob=new Blob([JSON.stringify(manifest)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  document.getElementById('pwa-manifest').href=url;
+
+  // Register minimal service worker for offline support
+  if('serviceWorker' in navigator){
+    const swCode=`
+const CACHE='anz-tracker-v1';
+const ASSETS=['${window.location.pathname}'];
+self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));
+self.addEventListener('fetch',e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).catch(()=>caches.match('${window.location.pathname}')))));
+self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));
+    `.trim();
+    const swBlob=new Blob([swCode],{type:'application/javascript'});
+    const swUrl=URL.createObjectURL(swBlob);
+    navigator.serviceWorker.register(swUrl,{scope:'/'}).catch(()=>{});
+  }
+}
+
+// ── Accountant Export ─────────────────────────────────────────────────────────
+function exportAccountantReport(){
+  if(!allRows.length){toast('⚠ No transactions to export');return;}
+  const bizRows=allRows.filter(r=>r.bpType==='business');
+  const debits=bizRows.filter(r=>r.isDebit);
+  const credits=allRows.filter(r=>!r.isDebit);
+  const totalSpend=+debits.reduce((s,r)=>s+r.amount,0).toFixed(2);
+  const totalGST=+debits.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);
+  const netSpend=+(totalSpend-totalGST).toFixed(2);
+  const totalIncome=+credits.reduce((s,r)=>s+r.amount,0).toFixed(2);
+  const grossProfit=+(totalIncome-netSpend).toFixed(2);
+  const fyYr=parseInt(document.getElementById('bas-fy-sel').value);
+  const fyStart=fyYr-1;
+
+  // BAS quarters
+  const qs=[
+    {l:'Q1',d:`1 Jul ${fyStart} – 30 Sep ${fyStart}`,from:new Date(fyStart,6,1),to:new Date(fyStart,8,30,23,59,59)},
+    {l:'Q2',d:`1 Oct ${fyStart} – 31 Dec ${fyStart}`,from:new Date(fyStart,9,1),to:new Date(fyStart,11,31,23,59,59)},
+    {l:'Q3',d:`1 Jan ${fyYr} – 31 Mar ${fyYr}`,from:new Date(fyYr,0,1),to:new Date(fyYr,2,31,23,59,59)},
+    {l:'Q4',d:`1 Apr ${fyYr} – 30 Jun ${fyYr}`,from:new Date(fyYr,3,1),to:new Date(fyYr,5,30,23,59,59)},
+  ];
+  const basRows=qs.map(q=>{
+    const qr=debits.filter(r=>{const d=r.date instanceof Date?r.date:null;return d&&!isNaN(d)&&d>=q.from&&d<=q.to;});
+    const a=+qr.reduce((s,r)=>s+r.amount,0).toFixed(2);
+    const g=+qr.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);
+    return`<tr><td>${q.l}</td><td>${q.d}</td><td>${qr.length}</td><td>${fmtAUD(a)}</td><td style="color:#e8a020;font-weight:600">${fmtAUD(g)}</td><td>${fmtAUD(a-g)}</td></tr>`;
+  }).join('');
+
+  // Category breakdown
+  const CATS_LIST=['COGS (Cost of Goods Sold)','Advertising & Marketing','Meals & Entertainment','Freight & Postage','Insurance','Motor Vehicle','Office Supplies','Rent & Utilities','Software / Subscriptions','Training & Education','Travel','Utilities','Wages & Salaries','Bank Fees','Other'];
+  const catRows=CATS_LIST.map(cat=>{
+    const cr=debits.filter(r=>r.category===cat);if(!cr.length)return'';
+    const a=+cr.reduce((s,r)=>s+r.amount,0).toFixed(2);
+    const g=+cr.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);
+    return`<tr><td>${cat}</td><td>${cr.length}</td><td>${fmtAUD(a)}</td><td>${fmtAUD(g)}</td><td>${fmtAUD(a-g)}</td></tr>`;
+  }).filter(Boolean).join('');
+  const uncat=debits.filter(r=>!r.category);
+  const uncatRow=uncat.length?`<tr style="color:#c06000"><td>— Uncategorised</td><td>${uncat.length}</td><td>${fmtAUD(uncat.reduce((s,r)=>s+r.amount,0))}</td><td>—</td><td>—</td></tr>`:'';
+
+  // Transaction register (business only, sorted by date)
+  const txRows=[...debits,...credits.filter(r=>r.bpType==='business')]
+    .sort((a,b)=>(a.date instanceof Date?a.date:new Date(0))-(b.date instanceof Date?b.date:new Date(0)))
+    .map(r=>`<tr>
+      <td>${fmtDate(r.date)}</td>
+      <td>${esc(cleanMerchant(r.description))}</td>
+      <td style="text-align:right;${r.isDebit?'color:#c0392b':'color:#1a7f5a'}">${r.isDebit?'-':'+'} ${fmtAUD(r.amount)}</td>
+      <td style="text-align:center">${r.isDebit?(r.gstIncluded==='yes'?'Yes':'No'):'—'}</td>
+      <td style="text-align:right;color:#e8a020">${r.isDebit&&r.gstIncluded==='yes'?fmtAUD(r.gstAmt):'—'}</td>
+      <td>${esc(r.category||'')}</td>
+      <td>${r.receiptFile?'✓':'—'}</td>
+      <td>${esc(r.notes||'')}</td>
+    </tr>`).join('');
+
+  const html=`<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><title>Business Tax Summary — FY ${fyStart}–${fyYr}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;color:#1a2e3b;font-size:13px;line-height:1.5;}
+@media print{body{font-size:11px;}.no-print{display:none!important;}@page{margin:2cm;size:A4;}}
+.page{max-width:900px;margin:0 auto;padding:2rem;}
+.cover{border-bottom:4px solid #002e5d;padding-bottom:1.5rem;margin-bottom:1.5rem;}
+.cover h1{font-size:22px;color:#002e5d;font-weight:700;margin-bottom:4px;}
+.cover .sub{font-size:13px;color:#5a7a8a;}
+.section{margin-bottom:2rem;}
+.section h2{font-size:15px;font-weight:700;color:#002e5d;border-bottom:2px solid #ebf5f6;padding-bottom:6px;margin-bottom:12px;}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:1.5rem;}
+.kpi{background:#f5fbfb;border:1px solid #d0e8ec;border-radius:8px;padding:12px 14px;}
+.kpi-label{font-size:10px;color:#5a7a8a;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;}
+.kpi-value{font-size:20px;font-weight:700;color:#002e5d;}
+.kpi-value.green{color:#1a7f5a;}.kpi-value.gold{color:#e8a020;}.kpi-value.red{color:#c0392b;}
+table{width:100%;border-collapse:collapse;margin-bottom:1rem;}
+th{background:#002e5d;color:#fff;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;padding:8px 10px;text-align:left;}
+td{padding:7px 10px;border-bottom:1px solid #f0f0f0;}
+tr:nth-child(even)td{background:#fafafa;}
+.note{background:#fff8e6;border:1px solid #ffd080;border-radius:6px;padding:10px 14px;font-size:12px;color:#856404;margin-top:1rem;}
+.print-btn{background:#002e5d;color:#fff;border:none;font-size:14px;font-weight:600;padding:10px 24px;border-radius:8px;cursor:pointer;margin-bottom:1.5rem;}
+.print-btn:hover{background:#007b8a;}
+</style></head><body><div class="page">
+<div class="no-print"><button class="print-btn" onclick="window.print()">🖨 Print / Save as PDF</button></div>
+<div class="cover">
+  <h1>Business Tax Summary</h1>
+  <div class="sub">Financial Year ${fyStart}–${fyYr} &nbsp;·&nbsp; Generated ${new Date().toLocaleDateString('en-AU',{day:'numeric',month:'long',year:'numeric'})}</div>
+  ${sessionName?`<div class="sub">Account: ${esc(sessionName)}</div>`:''}
+</div>
+
+<div class="section">
+  <h2>Financial Summary</h2>
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">Total Purchases (incl. GST)</div><div class="kpi-value red">${fmtAUD(totalSpend)}</div></div>
+    <div class="kpi"><div class="kpi-label">GST Claimable (1B)</div><div class="kpi-value gold">${fmtAUD(totalGST)}</div></div>
+    <div class="kpi"><div class="kpi-label">Net Purchases (ex GST)</div><div class="kpi-value">${fmtAUD(netSpend)}</div></div>
+    <div class="kpi"><div class="kpi-label">Total Income / Credits</div><div class="kpi-value green">${fmtAUD(totalIncome)}</div></div>
+    <div class="kpi"><div class="kpi-label">Gross Profit Est.</div><div class="kpi-value ${grossProfit>=0?'green':'red'}">${fmtAUD(grossProfit)}</div></div>
+    <div class="kpi"><div class="kpi-label">Business Transactions</div><div class="kpi-value">${bizRows.length}</div></div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>BAS Summary — FY ${fyStart}–${fyYr}</h2>
+  <table><thead><tr><th>Quarter</th><th>Period</th><th>Transactions</th><th>Total Spend</th><th>GST (1B)</th><th>Net (ex GST)</th></tr></thead>
+  <tbody>${basRows}<tr style="font-weight:700;background:#002e5d!important"><td colspan="2" style="color:#fff">Full Year Total</td><td style="color:#fff">${debits.length}</td><td style="color:#fff">${fmtAUD(totalSpend)}</td><td style="color:#e8a020">${fmtAUD(totalGST)}</td><td style="color:#fff">${fmtAUD(netSpend)}</td></tr></tbody></table>
+  <div class="note">⚠ GST claimable is estimated at 1/11th of total for transactions marked "Yes". Verify with your accountant before lodging BAS.</div>
+</div>
+
+<div class="section">
+  <h2>Spend by Category</h2>
+  <table><thead><tr><th>Category</th><th>Transactions</th><th>Total Spend</th><th>GST Est.</th><th>Net (ex GST)</th></tr></thead>
+  <tbody>${catRows}${uncatRow}</tbody></table>
+</div>
+
+<div class="section">
+  <h2>Transaction Register (Business)</h2>
+  <table><thead><tr><th>Date</th><th>Description</th><th style="text-align:right">Amount</th><th style="text-align:center">GST</th><th style="text-align:right">GST Amt</th><th>Category</th><th>Receipt</th><th>Notes</th></tr></thead>
+  <tbody>${txRows}</tbody></table>
+</div>
+
+<div class="note" style="margin-top:2rem">This report was generated by ANZ Business Tracker and is for informational purposes only. It is not a substitute for professional accounting advice. Please have your accountant review before lodging any tax returns or BAS statements.</div>
+</div></body></html>`;
+
+  const w=window.open('','_blank');
+  if(w){w.document.write(html);w.document.close();}
+  else{toast('⚠ Pop-up blocked — allow pop-ups for this site and try again');}
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 buildBulkCatSel();
 updatePeriodLabels();
 window.addEventListener('resize',()=>{if(analyticsOpen)renderChart();});
 window.addEventListener('load',()=>{
+  initPWA();
   const wasSigned=localStorage.getItem('drive_was_signed_in')==='true';
   if(window.location.protocol==='https:'){
     if(wasSigned){
