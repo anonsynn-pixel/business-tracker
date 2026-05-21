@@ -408,7 +408,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v4.6</span>
+    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v4.7</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -1190,11 +1190,11 @@ function inRange(r,range){
 
 // ── Filter ────────────────────────────────────────────────────────────────────
 function getFiltered(){
-  const q=document.getElementById('search-input').value.toLowerCase();
-  const cat=document.getElementById('cat-filter').value;
-  const typ=document.getElementById('type-filter').value;
-  const bp=document.getElementById('bp-filter').value;
-  const rcpt=document.getElementById('receipt-filter').value;
+  const q=(document.getElementById('search-input')?.value||'').toLowerCase();
+  const cat=document.getElementById('cat-filter')?.value||'';
+  const typ=document.getElementById('type-filter')?.value||'';
+  const bp=document.getElementById('bp-filter')?.value||'';
+  const rcpt=document.getElementById('receipt-filter')?.value||'';
   const range=getDateRange();
   return allRows.filter(r=>{
     if(showDupsOnly&&!r.isDup)return false;
@@ -1313,6 +1313,7 @@ function buildBulkCatSel(){
 function sortBy(key){if(sortKey===key)sortAsc=!sortAsc;else{sortKey=key;sortAsc=true;}renderTable();}
 
 function renderTable(){
+  if(!document.getElementById('table-body'))return; // app section not visible yet
   const rows=getFiltered();
   rows.sort((a,b)=>{
     let av,bv;
