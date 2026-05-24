@@ -416,7 +416,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v5.0</span>
+    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v5.1</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -2401,40 +2401,106 @@ function extractDateFromText(text){
   return null;
 }
 
+// ── Merchant name extraction from receipt filename / text ─────────────────────
+function extractMerchantFromFilename(name){
+  // Remove common receipt filename words, extensions, numbers, dates
+  let s=name.replace(/\.[^.]+$/,'') // remove extension
+    .replace(/\b(invoice|receipt|tax|statement|order|purchase|payment|invoice#?|inv|rcpt|pdf)\b/gi,' ')
+    .replace(/[_\-]+/g,' ')
+    .replace(/\d{4,}/g,' ') // remove long numbers (order IDs, dates)
+    .replace(/\s{2,}/g,' ').trim();
+  return s.toLowerCase();
+}
+
+function extractMerchantFromText(text){
+  // Look for common "sold by / vendor / from" patterns
+  const patterns=[
+    /(?:sold by|vendor|supplier|from|bill from|issued by)[:\s]+([A-Za-z][^\n\r]{3,40})/i,
+    /^([A-Z][A-Z\s&.]{4,30})\n/m, // All-caps company name at top
+    /(?:ABN|ACN)\s*[\d\s]+\s*([A-Za-z][^\n\r]{3,30})/i,
+  ];
+  for(const p of patterns){
+    const m=text.match(p);
+    if(m&&m[1])return m[1].trim().toLowerCase();
+  }
+  return null;
+}
+
+function merchantSimilarity(receiptMerchant,txDesc){
+  // Score how similar receipt merchant name is to transaction description
+  if(!receiptMerchant)return 0;
+  const tx=cleanMerchant(txDesc).toLowerCase();
+  const words=receiptMerchant.split(/\s+/).filter(w=>w.length>2);
+  if(!words.length)return 0;
+  let hits=0;
+  words.forEach(w=>{if(tx.includes(w))hits++;});
+  return hits/words.length; // 0-1 score
+}
+
 function matchAllItems(){
   bulkItems.forEach(item=>{
-    if(item.isManual)return; // respect user's manual assignment
+    if(item.isManual)return;
     item.matchedIds=[];item.assignedId=null;
-    // Images with no OCR data stay as image (manual only)
     if(item.type==='image'&&!item.ocrUsed&&!item.parsedAmount&&!item.parsedDate){item.status='image';return;}
-    if(!item.parsedAmount&&!item.parsedDate){item.status='unmatched';return;}
 
-    const candidates=allRows.filter(r=>{
-      if(!r.isDebit)return false;
-      if(r.receiptFile)return false; // already has receipt
-      let amtMatch=true,dateMatch=true;
-      if(item.parsedAmount!==null)amtMatch=Math.abs(r.amount-item.parsedAmount)<0.015;
-      if(item.parsedDate!==null&&r.date instanceof Date){
-        // Allow ±1 day tolerance — invoice date sometimes differs from ANZ debit date
-        const diff=Math.abs(r.date.getTime()-item.parsedDate.getTime());
-        dateMatch=diff<=86400000*7; // 7 day tolerance — AusPost invoices can be up to a week after debit
+    // Extract merchant keywords from filename + text
+    const filenameMerchant=extractMerchantFromFilename(item.name);
+    const textMerchant=item.parsedText?extractMerchantFromText(item.parsedText):null;
+    item.merchantHint=textMerchant||filenameMerchant||null;
+
+    const available=allRows.filter(r=>r.isDebit&&!r.receiptFile);
+
+    // Phase 1: strict amount + date match (existing logic)
+    if(item.parsedAmount||item.parsedDate){
+      const candidates=available.filter(r=>{
+        let amtMatch=true,dateMatch=true;
+        if(item.parsedAmount!==null)amtMatch=Math.abs(r.amount-item.parsedAmount)<0.015;
+        if(item.parsedDate!==null&&r.date instanceof Date){
+          const diff=Math.abs(r.date.getTime()-item.parsedDate.getTime());
+          dateMatch=diff<=86400000*7;
+        }
+        return amtMatch&&dateMatch;
+      });
+
+      if(candidates.length>0){
+        // Among candidates, prefer the one whose merchant name best matches
+        const scored=candidates.map(r=>({r,score:merchantSimilarity(item.merchantHint,r.description)}));
+        scored.sort((a,b)=>b.score-a.score);
+        item.matchedIds=scored.map(s=>s.r.id);
+
+        if(scored.length===1){
+          item.assignedId=scored[0].r.id;item.status='matched';
+        }else{
+          const alreadyAssigned=new Set(bulkItems.filter(i=>i!==item&&i.assignedId).map(i=>i.assignedId));
+          const firstFree=scored.find(s=>!alreadyAssigned.has(s.r.id));
+          if(firstFree){item.assignedId=firstFree.r.id;item.status='matched';}
+          else{item.status='ambiguous';}
+        }
+        return;
       }
-      return amtMatch&&dateMatch;
-    });
-
-    item.matchedIds=candidates.map(r=>r.id);
-    if(candidates.length===1){
-      item.assignedId=candidates[0].id;
-      item.status='matched';
-    }else if(candidates.length>1){
-      // Auto-assign in sequence: pick first unassigned in this group
-      const alreadyAssigned=new Set(bulkItems.filter(i=>i!==item&&i.assignedId).map(i=>i.assignedId));
-      const firstFree=candidates.find(r=>!alreadyAssigned.has(r.id));
-      if(firstFree){item.assignedId=firstFree.id;item.status='matched';}
-      else{item.status='ambiguous';}
-    }else{
-      item.status='unmatched';
     }
+
+    // Phase 2: name-only match when amount/date didn't find anything
+    if(item.merchantHint&&item.merchantHint.length>3){
+      const nameMatches=available
+        .map(r=>({r,score:merchantSimilarity(item.merchantHint,r.description)}))
+        .filter(s=>s.score>=0.5) // at least 50% of words match
+        .sort((a,b)=>b.score-a.score);
+
+      if(nameMatches.length>0){
+        item.matchedIds=nameMatches.map(s=>s.r.id);
+        item.nameOnlyMatch=true; // flag so UI can note this is a name match
+        if(nameMatches.length===1){
+          item.assignedId=nameMatches[0].r.id;
+          item.status='matched';
+        }else{
+          item.status='ambiguous';
+        }
+        return;
+      }
+    }
+
+    item.status='unmatched';
   });
 }
 
@@ -2472,7 +2538,8 @@ function renderBulkResults(){
     if(item.status==='matched'&&item.assignedId){
       const r=allRows.find(r=>r.id===item.assignedId);
       if(r){
-        matchInfo=`<div class="br-item-match">→ ${fmtDate(r.date)} · ${fmtAUD(r.amount)} · ${esc(cleanMerchant(r.description||''))}</div>`;
+        const nameNote=item.nameOnlyMatch?` <span style="font-size:10px;color:var(--orange)">(name match — verify amount)</span>`:'';
+        matchInfo=`<div class="br-item-match">→ ${fmtDate(r.date)} · ${fmtAUD(r.amount)} · ${esc(cleanMerchant(r.description||''))}${nameNote}</div>`;
       }else{
         matchInfo=`<div class="br-item-warn">Assigned transaction no longer exists — please reassign</div>`;
         item.assignedId=null;item.status='unmatched';
@@ -2489,11 +2556,13 @@ function renderBulkResults(){
         <option value="__unassign__" ${!item.assignedId?'selected':''}>Don't assign this receipt</option>
       </select>`;
     }
-    if(item.status==='unmatched'){
-      const opts=allRows.filter(r=>r.isDebit&&!r.receiptFile)
-        .sort((a,b)=>(b.date instanceof Date?b.date:new Date(0))-(a.date instanceof Date?a.date:new Date(0)))
-        .slice(0,80)
-        .map(r=>`<option value="${r.id}">${fmtDate(r.date)} · ${fmtAUD(r.amount)} · ${esc(cleanMerchant(r.description))}</option>`).join('');
+    if(item.status==='unmatched'||(item.status==='image'&&item.type==='image')){
+      // Sort by merchant name similarity first, then by date
+      const pool=allRows.filter(r=>r.isDebit&&!r.receiptFile)
+        .map(r=>({r,score:merchantSimilarity(item.merchantHint,r.description)}))
+        .sort((a,b)=>b.score!==a.score?b.score-a.score:(b.r.date instanceof Date?b.r.date:new Date(0))-(a.r.date instanceof Date?a.r.date:new Date(0)))
+        .slice(0,80);
+      const opts=pool.map(({r,score})=>`<option value="${r.id}">${score>0.4?'★ ':''} ${fmtDate(r.date)} · ${fmtAUD(r.amount)} · ${esc(cleanMerchant(r.description))}</option>`).join('');
       assignSel=`<select class="br-assign-sel" onchange="bulkAssign(${idx},this.value)">
         <option value="">— Manually select transaction —</option>${opts}
       </select>`;
