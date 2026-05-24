@@ -206,6 +206,9 @@ td{padding:9px 11px;color:var(--text);vertical-align:middle;}
 .td-mono{font-family:var(--mono);font-size:11px;}
 .td-amount{font-family:var(--mono);font-weight:500;text-align:right;color:var(--navy);}
 .td-credit{font-family:var(--mono);font-weight:500;text-align:right;color:var(--green);}
+.dark .td-amount{color:#b8d4f0;}
+.dark .td-credit{color:#4ade80;}
+.dark .td-mono{color:#8aaabb;}
 .td-desc{max-width:250px;min-width:140px;}
 .td-desc span{display:block;word-break:break-word;white-space:normal;line-height:1.4;}
 .dup-flag{color:var(--orange);font-size:11px;}
@@ -214,11 +217,16 @@ td{padding:9px 11px;color:var(--text);vertical-align:middle;}
 .bp-btn{padding:3px 7px;cursor:pointer;background:var(--surface);border:none;font-family:var(--mono);font-size:10px;color:var(--muted);transition:all 0.12s;line-height:1.5;}
 .bp-btn.act-b{background:var(--navy);color:#fff;}
 .bp-btn.act-p{background:var(--personal);color:#fff;}
-.cat-select{border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-family:var(--sans);font-size:12px;color:var(--text);background:transparent;outline:none;cursor:pointer;min-width:130px;transition:border-color 0.15s;}
+.cat-select{border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-family:var(--sans);font-size:12px;color:var(--text);background:var(--surface);outline:none;cursor:pointer;min-width:130px;transition:border-color 0.15s;}
 .cat-select:focus{border-color:var(--accent);}
 .cat-select:disabled,.gst-sel:disabled{opacity:0.4;cursor:not-allowed;}
-.gst-sel{border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-family:var(--sans);font-size:12px;color:var(--text);background:transparent;outline:none;cursor:pointer;min-width:56px;}
+.gst-sel{border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-family:var(--sans);font-size:12px;color:var(--text);background:var(--surface);outline:none;cursor:pointer;min-width:56px;}
+/* Dark mode selects & options */
+.dark .cat-select,.dark .gst-sel,.dark select{background:#1a3050;color:#d8e8f4;border-color:#3a5575;}
+.dark select option{background:#1a3050;color:#d8e8f4;}
+.dark .cat-select:focus,.dark .gst-sel:focus{border-color:var(--accent);}
 .badge-na{background:#f0f0f0;color:var(--muted);font-family:var(--mono);font-size:10px;padding:3px 7px;border-radius:20px;}
+.dark .badge-na{background:#2a3f55;color:#6a8a9a;}
 .note-input{border:1px solid transparent;border-radius:5px;padding:4px 6px;font-family:var(--sans);font-size:12px;color:var(--text);background:transparent;outline:none;width:115px;transition:all 0.15s;}
 .note-input:hover{border-color:var(--border);background:var(--surface);}
 .note-input:focus{border-color:var(--accent);background:var(--surface);}
@@ -408,7 +416,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v4.7</span>
+    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v5.0</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -1017,6 +1025,8 @@ function detectDuplicates(){
   if(!dupDismissed){
     try{dupDismissed=localStorage.getItem('anz_dup_dismissed')==='true';}catch(e){}
   }
+  // If dismissed — clear all flags so yellow highlights don't show
+  if(dupDismissed){allRows.forEach(r=>r.isDup=false);}
   if(n>0&&!dupDismissed){
     document.getElementById('dup-text').innerHTML=`<strong>⚠ ${n} possible duplicate${n>1?'s':''} detected</strong> — same date, amount and description. Review and mark personal or ignore.`;
     document.getElementById('dup-banner').classList.add('visible');
@@ -2068,6 +2078,64 @@ function copyDebugLogs(){
   navigator.clipboard.writeText(text).then(()=>toast('✓ Logs copied to clipboard'));
 }
 
+// ── Claude Vision OCR for receipt images ─────────────────────────────────────
+async function ocrReceiptWithClaude(dataUrl,filename){
+  try{
+    // Extract base64 and media type
+    const commaIdx=dataUrl.indexOf(',');
+    const header=dataUrl.slice(0,commaIdx);
+    const base64=dataUrl.slice(commaIdx+1);
+    let mediaType=header.match(/data:([^;]+)/)?.[1]||'image/jpeg';
+
+    // Claude supports: image/jpeg, image/png, image/gif, image/webp
+    // Compressed images from compressImage() are always image/jpeg
+    if(!['image/jpeg','image/png','image/gif','image/webp'].includes(mediaType)){
+      mediaType='image/jpeg';
+    }
+
+    const response=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:150,
+        messages:[{
+          role:'user',
+          content:[
+            {type:'image',source:{type:'base64',media_type:mediaType,data:base64}},
+            {type:'text',text:'Extract the total amount paid and the transaction/invoice date from this receipt or invoice. Reply with ONLY a JSON object, no other text: {"amount": 0.00, "date": "DD/MM/YYYY"}. Use null for any field you cannot find. Use the final total (not subtotals or line items).'}
+          ]
+        }]
+      })
+    });
+
+    if(!response.ok){
+      dbg('Claude OCR API error',{status:response.status,filename});
+      return null;
+    }
+
+    const data=await response.json();
+    const text=data.content?.find(b=>b.type==='text')?.text||'';
+    dbg('Claude OCR raw response',{filename,text});
+
+    // Parse JSON from response
+    const clean=text.replace(/```json|```/g,'').trim();
+    const parsed=JSON.parse(clean);
+
+    const amount=parsed.amount?parseFloat(parsed.amount):null;
+    let date=null;
+    if(parsed.date){
+      date=extractDateFromText(parsed.date);
+    }
+
+    if(!amount&&!date)return null;
+    return{amount,date};
+  }catch(e){
+    dbg('Claude OCR parse error',{filename,error:e.message});
+    return null;
+  }
+}
+
 // ── Bulk Receipt Upload ───────────────────────────────────────────────────────
 // PDF.js loaded lazily only if fast extraction fails
 let pdfJsReady=false;
@@ -2114,7 +2182,7 @@ async function processBulkFiles(fileList){
 
   // Open modal immediately so user sees progress
   document.getElementById('bulk-rcpt-modal').classList.add('open');
-  document.getElementById('br-body').innerHTML=`<div class="br-processing"><div class="br-spinner"></div><div>Processing ${filesArray.length} file${filesArray.length>1?'s':''}…</div></div>`;
+  document.getElementById('br-body').innerHTML=`<div class="br-processing"><div class="br-spinner"></div><div>Processing ${filesArray.length} file${filesArray.length>1?'s':''}… PDFs extracted locally · Photos read by Claude 🤖</div></div>`;
   document.getElementById('bulk-file-input').value=''; // safe to clear now — we have filesArray
 
   // Yield to browser so the spinner actually paints before heavy processing begins
@@ -2157,6 +2225,22 @@ async function processBulkFiles(fileList){
       }catch(e){
         dbg('PDF extraction error',{name:file.name,error:e.message});
         item.status='unmatched';
+      }
+    } else {
+      // Image — use Claude Vision OCR to extract amount and date
+      try{
+        dbg('starting Claude OCR for image',{name:file.name});
+        const ocrResult=await ocrReceiptWithClaude(dataUrl,file.name);
+        if(ocrResult){
+          item.parsedAmount=ocrResult.amount;
+          item.parsedDate=ocrResult.date;
+          item.ocrUsed=true;
+          dbg('Claude OCR result',{name:file.name,amount:ocrResult.amount,date:ocrResult.date?dateToStr(ocrResult.date):null});
+        } else {
+          dbg('Claude OCR returned no data',{name:file.name});
+        }
+      }catch(e){
+        dbg('Claude OCR error',{name:file.name,error:e.message});
       }
     }
     dbg('file processed',{name:file.name,status:item.status});
@@ -2321,7 +2405,8 @@ function matchAllItems(){
   bulkItems.forEach(item=>{
     if(item.isManual)return; // respect user's manual assignment
     item.matchedIds=[];item.assignedId=null;
-    if(item.type==='image'){item.status='image';return;}
+    // Images with no OCR data stay as image (manual only)
+    if(item.type==='image'&&!item.ocrUsed&&!item.parsedAmount&&!item.parsedDate){item.status='image';return;}
     if(!item.parsedAmount&&!item.parsedDate){item.status='unmatched';return;}
 
     const candidates=allRows.filter(r=>{
@@ -2380,7 +2465,7 @@ function renderBulkResults(){
       ?`<img class="br-thumb" src="${item.dataUrl}">`
       :`<div class="br-thumb-pdf">📄</div>`;
     const detail=item.parsedDate||item.parsedAmount
-      ?`${item.parsedDate?fmtDate(item.parsedDate):''}${item.parsedDate&&item.parsedAmount?' · ':''}${item.parsedAmount?fmtAUD(item.parsedAmount):''}`
+      ?`${item.parsedDate?fmtDate(item.parsedDate):''}${item.parsedDate&&item.parsedAmount?' · ':''}${item.parsedAmount?fmtAUD(item.parsedAmount):''} ${item.ocrUsed?'<span style="font-size:10px;background:#e8f0ff;color:#4455cc;padding:1px 5px;border-radius:3px;margin-left:2px;">🤖 OCR</span>':''}`
       :'No date/amount extracted';
 
     let matchInfo='',assignSel='';
