@@ -416,7 +416,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v5.1</span>
+    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v5.4</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -1581,6 +1581,7 @@ function driveSignIn(silent=false){
       }
       driveToken=resp.access_token;
       localStorage.setItem('drive_was_signed_in','true');
+      dbg('Drive sign-in success',{silent,tokenLength:resp.access_token?.length});
       document.getElementById('btn-drive-signin').classList.remove('vis');
       document.getElementById('btn-drive-signout').classList.add('vis');
       document.getElementById('reconnect-banner').classList.remove('visible');
@@ -1664,10 +1665,15 @@ async function driveLoadSessionSilent(){
     toast('↻ Data updated from another device');
     startDriveSyncTimer();
     if(!drivePollTimer)startDrivePollTimer(); // restart poll if it stopped
-  }catch(e){driveSetStatus('error','Sync error');}
+  }catch(e){
+    dbg('driveLoadSessionSilent error',{error:e.message});
+    // Don't show error toast for background syncs — just log and update status quietly
+    driveSetStatus('error','Update failed');
+  }
 }
 
 async function driveLoadSession(){
+  dbg('driveLoadSession started',{hasToken:!!driveToken});
   try{
     driveSetStatus('syncing','Loading…');
     const res=await fetch(
@@ -1700,7 +1706,12 @@ async function driveLoadSession(){
     lastSavedAt=d.savedAt;
     startDriveSyncTimer();
     startDrivePollTimer();
-  }catch(e){driveSetStatus('error','Sync error');toast('⚠ Drive error: '+e.message);}
+  }catch(e){
+    dbg('driveLoadSession error',{error:e.message,stack:e.stack?.slice(0,200)});
+    driveSetStatus('error','Load failed');
+    toast('⚠ Drive error: '+e.message+' — try reconnecting');
+    showDriveSignInButton();
+  }
 }
 
 async function refreshDriveTokenIfNeeded(){
@@ -2221,6 +2232,7 @@ async function processBulkFiles(fileList){
         dbg('PDF extraction complete',{name:file.name,textLength:text?.length});
         item.parsedAmount=extractAmount(text);
         item.parsedDate=extractDateFromText(text);
+        item.parsedText=text; // save for merchant name extraction
         dbg('extracted data',{name:file.name,amount:item.parsedAmount,date:item.parsedDate?dateToStr(item.parsedDate):null});
       }catch(e){
         dbg('PDF extraction error',{name:file.name,error:e.message});
@@ -2256,9 +2268,22 @@ async function processBulkFiles(fileList){
     return;
   }
 
-  // Merge with existing (avoid duplicates by name)
+  // Deduplicate: skip files already in queue by name OR by content (same file, different name)
   const existingNames=new Set(bulkItems.map(i=>i.name));
-  newItems.forEach(i=>{if(!existingNames.has(i.name))bulkItems.push(i);});
+  // Also build a set of dataUrl prefixes (first 100 chars) to catch same-content different-name
+  const existingContent=new Set(bulkItems.map(i=>i.dataUrl?.slice(0,100)||''));
+  // Also check files already attached to transactions
+  const attachedNames=new Set(allRows.filter(r=>r.receiptFile).map(r=>r.receiptFile.name));
+
+  let skippedDup=0,skippedAttached=0;
+  newItems.forEach(i=>{
+    if(existingNames.has(i.name)){skippedDup++;return;}
+    if(existingContent.has(i.dataUrl?.slice(0,100)||'')){skippedDup++;return;}
+    if(attachedNames.has(i.name)){skippedAttached++;return;}
+    bulkItems.push(i);
+  });
+  if(skippedDup>0)toast(`⚠ ${skippedDup} duplicate receipt${skippedDup>1?'s':''} skipped — already in queue`);
+  if(skippedAttached>0)toast(`ℹ ${skippedAttached} receipt${skippedAttached>1?'s':''} already attached to transactions — skipped`);
 
   // Match all items
   matchAllItems();
@@ -2443,63 +2468,53 @@ function matchAllItems(){
     item.matchedIds=[];item.assignedId=null;
     if(item.type==='image'&&!item.ocrUsed&&!item.parsedAmount&&!item.parsedDate){item.status='image';return;}
 
-    // Extract merchant keywords from filename + text
     const filenameMerchant=extractMerchantFromFilename(item.name);
     const textMerchant=item.parsedText?extractMerchantFromText(item.parsedText):null;
     item.merchantHint=textMerchant||filenameMerchant||null;
 
+    dbg('matchAllItems',{name:item.name,amount:item.parsedAmount,date:item.parsedDate?dateToStr(item.parsedDate):null,hint:item.merchantHint});
+
     const available=allRows.filter(r=>r.isDebit&&!r.receiptFile);
 
-    // Phase 1: strict amount + date match (existing logic)
+    // Phase 1: amount + date match
     if(item.parsedAmount||item.parsedDate){
       const candidates=available.filter(r=>{
         let amtMatch=true,dateMatch=true;
         if(item.parsedAmount!==null)amtMatch=Math.abs(r.amount-item.parsedAmount)<0.015;
         if(item.parsedDate!==null&&r.date instanceof Date){
-          const diff=Math.abs(r.date.getTime()-item.parsedDate.getTime());
-          dateMatch=diff<=86400000*7;
+          dateMatch=Math.abs(r.date.getTime()-item.parsedDate.getTime())<=86400000*7;
         }
         return amtMatch&&dateMatch;
       });
-
+      dbg('Phase1',{name:item.name,candidates:candidates.length});
       if(candidates.length>0){
-        // Among candidates, prefer the one whose merchant name best matches
-        const scored=candidates.map(r=>({r,score:merchantSimilarity(item.merchantHint,r.description)}));
-        scored.sort((a,b)=>b.score-a.score);
+        const scored=candidates.map(r=>({r,score:merchantSimilarity(item.merchantHint,r.description)})).sort((a,b)=>b.score-a.score);
         item.matchedIds=scored.map(s=>s.r.id);
-
-        if(scored.length===1){
-          item.assignedId=scored[0].r.id;item.status='matched';
-        }else{
-          const alreadyAssigned=new Set(bulkItems.filter(i=>i!==item&&i.assignedId).map(i=>i.assignedId));
-          const firstFree=scored.find(s=>!alreadyAssigned.has(s.r.id));
-          if(firstFree){item.assignedId=firstFree.r.id;item.status='matched';}
-          else{item.status='ambiguous';}
+        if(scored.length===1){item.assignedId=scored[0].r.id;item.status='matched';}
+        else{
+          const taken=new Set(bulkItems.filter(i=>i!==item&&i.assignedId).map(i=>i.assignedId));
+          const free=scored.find(s=>!taken.has(s.r.id));
+          if(free){item.assignedId=free.r.id;item.status='matched';}else{item.status='ambiguous';}
         }
         return;
       }
     }
 
-    // Phase 2: name-only match when amount/date didn't find anything
+    // Phase 2: name-only match (always runs when Phase 1 finds nothing)
     if(item.merchantHint&&item.merchantHint.length>3){
-      const nameMatches=available
-        .map(r=>({r,score:merchantSimilarity(item.merchantHint,r.description)}))
-        .filter(s=>s.score>=0.5) // at least 50% of words match
-        .sort((a,b)=>b.score-a.score);
-
-      if(nameMatches.length>0){
-        item.matchedIds=nameMatches.map(s=>s.r.id);
-        item.nameOnlyMatch=true; // flag so UI can note this is a name match
-        if(nameMatches.length===1){
-          item.assignedId=nameMatches[0].r.id;
-          item.status='matched';
-        }else{
-          item.status='ambiguous';
-        }
+      const ns=available.map(r=>({r,score:merchantSimilarity(item.merchantHint,r.description)}))
+        .filter(s=>s.score>=0.4).sort((a,b)=>b.score-a.score);
+      dbg('Phase2',{name:item.name,hint:item.merchantHint,count:ns.length,top:ns[0]?{score:ns[0].score,tx:cleanMerchant(ns[0].r.description)}:null});
+      if(ns.length>0){
+        item.matchedIds=ns.map(s=>s.r.id);
+        item.nameOnlyMatch=true;
+        item.assignedId=ns[0].r.id;
+        item.status=ns.length===1?'matched':'ambiguous';
         return;
       }
     }
 
+    dbg('unmatched',{name:item.name});
     item.status='unmatched';
   });
 }
@@ -3097,6 +3112,11 @@ window.addEventListener('load',()=>{
   dbg('page load',{protocol:window.location.protocol,wasSigned:localStorage.getItem('drive_was_signed_in'),hasBackup:!!localStorage.getItem('anz_tracker_autosave'),userAgent:navigator.userAgent.slice(0,80)});
   initPWA();
   const wasSigned=localStorage.getItem('drive_was_signed_in')==='true';
+  // Ensure Drive status starts hidden on fresh session
+  if(!wasSigned){
+    const ds=document.getElementById('drive-status');
+    if(ds)ds.classList.remove('vis');
+  }
 
   // ── Step 1: Load data immediately from localStorage so user never sees blank screen ──
   if(wasSigned){
