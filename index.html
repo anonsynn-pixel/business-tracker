@@ -323,6 +323,16 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
 .chart-tooltip{position:absolute;background:var(--navy);color:#fff;font-family:var(--mono);font-size:11px;padding:7px 10px;border-radius:7px;pointer-events:none;display:none;white-space:nowrap;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,0.2);}
 .chart-tooltip::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--navy);}
 .chart-empty{text-align:center;padding:2rem;color:var(--muted);font-size:13px;font-style:italic;}
+/* ── API Key Settings ── */
+.apikey-banner{background:var(--light);border:1px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.apikey-banner.warn{background:#fff8e6;border-color:var(--orange-border);}
+.apikey-banner-text{font-size:12px;color:var(--muted);flex:1;}
+.apikey-input{border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-family:var(--mono);font-size:11px;color:var(--text);background:var(--surface);outline:none;width:100%;margin-top:6px;transition:border-color 0.15s;}
+.apikey-input:focus{border-color:var(--accent);}
+.apikey-save-btn{background:var(--navy);color:#fff;border:none;font-family:var(--sans);font-size:12px;font-weight:500;padding:6px 14px;border-radius:6px;cursor:pointer;white-space:nowrap;flex-shrink:0;}
+.apikey-save-btn:hover{background:var(--teal);}
+.apikey-clear-btn{background:transparent;border:1px solid var(--border);color:var(--muted);font-family:var(--sans);font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;}
+.apikey-clear-btn:hover{border-color:var(--red);color:var(--red);}
 .bulk-rcpt-bar{background:var(--surface);border-radius:10px;border:2px dashed var(--border);padding:10px 16px;display:flex;align-items:center;gap:12px;margin-bottom:0.75rem;cursor:pointer;transition:all 0.2s;flex-wrap:wrap;}
 .bulk-rcpt-bar:hover{border-color:var(--accent);background:var(--pale);}
 .bulk-rcpt-bar.drag-active{border-color:var(--accent);background:var(--light);}
@@ -416,7 +426,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v5.4</span>
+    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v5.5</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -709,6 +719,25 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
         <span style="font-size:11px">PDFs auto-matched by date &amp; amount · Images assigned manually</span>
       </div>
     </label>
+    <div id="br-apikey-section" style="padding:12px 20px 0;">
+      <div class="apikey-banner" id="br-apikey-banner">
+        <div class="apikey-banner-text" id="br-apikey-text">
+          <strong>🤖 Claude OCR</strong> — reads photo receipts automatically<br>
+          <span id="br-apikey-status" style="color:var(--orange)">No API key set — photos assigned manually</span>
+          <div id="br-apikey-form" style="display:none;margin-top:8px;">
+            <input class="apikey-input" type="password" id="br-apikey-input" placeholder="sk-ant-api03-…" autocomplete="off" spellcheck="false">
+            <div style="display:flex;gap:8px;margin-top:6px;align-items:center;">
+              <button class="apikey-save-btn" onclick="saveApiKey()">Save key</button>
+              <span style="font-size:11px;color:var(--muted)">Stored locally on this device only — never uploaded</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button class="apikey-save-btn" id="br-apikey-toggle-btn" onclick="toggleApiKeyForm()">Set key</button>
+          <button class="apikey-clear-btn" id="br-apikey-clear-btn" onclick="clearApiKey()" style="display:none">Remove</button>
+        </div>
+      </div>
+    </div>
     <div class="br-body" id="br-body">
       <div style="text-align:center;padding:1.5rem;color:var(--muted);font-size:13px;" id="br-empty">
         Upload receipts above to start matching
@@ -2104,9 +2133,11 @@ async function ocrReceiptWithClaude(dataUrl,filename){
       mediaType='image/jpeg';
     }
 
+    const apiKey=getApiKey();
+    if(!apiKey){dbg('No API key — skipping OCR',{filename});return null;}
     const response=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({
         model:'claude-sonnet-4-20250514',
         max_tokens:150,
@@ -2169,6 +2200,7 @@ let bulkItems=[]; // {file, name, type, dataUrl, parsedDate, parsedAmount, match
 
 function openBulkRcpt(){
   document.getElementById('bulk-rcpt-modal').classList.add('open');
+  updateApiKeyUI();
   if(bulkItems.length)renderBulkResults();
 }
 function closeBulkRcpt(){document.getElementById('bulk-rcpt-modal').classList.remove('open');}
@@ -3075,6 +3107,54 @@ tr:nth-child(even)td{background:#fafafa;}
   else{toast('⚠ Pop-up blocked — allow pop-ups for this site and try again');}
 }
 
+// ── API Key Management ───────────────────────────────────────────────────────
+function getApiKey(){
+  try{return localStorage.getItem('anz_anthropic_key')||'';}catch(e){return '';}
+}
+
+function saveApiKey(){
+  const val=document.getElementById('br-apikey-input').value.trim();
+  if(!val.startsWith('sk-ant-')){toast('⚠ Invalid key — should start with sk-ant-');return;}
+  try{localStorage.setItem('anz_anthropic_key',val);}catch(e){toast('⚠ Could not save key');return;}
+  document.getElementById('br-apikey-input').value='';
+  updateApiKeyUI();
+  toast('✓ API key saved — Claude OCR enabled');
+}
+
+function clearApiKey(){
+  if(!confirm('Remove the Claude API key? Photo OCR will be disabled.'))return;
+  try{localStorage.removeItem('anz_anthropic_key');}catch(e){}
+  updateApiKeyUI();
+  toast('API key removed');
+}
+
+function toggleApiKeyForm(){
+  const form=document.getElementById('br-apikey-form');
+  const btn=document.getElementById('br-apikey-toggle-btn');
+  const isOpen=form.style.display!=='none';
+  form.style.display=isOpen?'none':'block';
+  btn.textContent=isOpen?'Set key':'Cancel';
+  if(!isOpen)setTimeout(()=>document.getElementById('br-apikey-input')?.focus(),50);
+}
+
+function updateApiKeyUI(){
+  const key=getApiKey();
+  const hasKey=!!key;
+  const status=document.getElementById('br-apikey-status');
+  const toggleBtn=document.getElementById('br-apikey-toggle-btn');
+  const clearBtn=document.getElementById('br-apikey-clear-btn');
+  const banner=document.getElementById('br-apikey-banner');
+  const form=document.getElementById('br-apikey-form');
+  if(status){status.textContent=hasKey?'🟢 Claude OCR active — photos auto-matched':'No API key set — photos assigned manually';status.style.color=hasKey?'var(--green)':'var(--orange)';}
+  if(toggleBtn){toggleBtn.textContent=hasKey?'Change':'Set key';}
+  if(clearBtn){clearBtn.style.display=hasKey?'':'none';}
+  if(banner){banner.className='apikey-banner'+(hasKey?'':' warn');}
+  if(form&&hasKey){form.style.display='none';}
+  // Update drop zone subtitle
+  const sub=document.querySelector('.br-drop-text span');
+  if(sub){sub.textContent=hasKey?'PDFs auto-matched · Photos read by Claude 🤖':'PDFs auto-matched by date & amount · Images assigned manually';}
+}
+
 // ── Dark Mode ─────────────────────────────────────────────────────────────────
 function toggleDarkMode(){
   const isDark=document.documentElement.classList.toggle('dark');
@@ -3103,6 +3183,8 @@ function initDarkMode(){
 initDarkMode();
 buildBulkCatSel();
 updatePeriodLabels();
+// Init API key UI state
+setTimeout(updateApiKeyUI,100);
 // Sync version to mobile menu
 const _vb=document.getElementById('version-badge');
 const _mv=document.getElementById('mmenu-version');
