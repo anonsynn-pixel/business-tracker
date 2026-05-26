@@ -96,18 +96,7 @@ main{max-width:1280px;margin:0 auto;padding:1.25rem 1.5rem 3rem;}
 .btn-go-back:hover{border-color:var(--teal);color:var(--teal);background:var(--light);}
 
 /* ── Banners ── */
-.backup-banner{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:none;flex-direction:column;gap:10px;margin-bottom:0.75rem;box-shadow:0 2px 12px rgba(0,0,0,0.08);}
-.backup-banner.visible{display:flex;}
-.backup-banner-top{display:flex;align-items:center;gap:10px;}
-.backup-banner-icon{font-size:22px;flex-shrink:0;}
-.backup-banner-text{flex:1;font-size:13px;color:var(--text);}
-.backup-banner-text strong{color:var(--navy);}
-.backup-banner-text .backup-age{font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px;}
-.backup-banner-btns{display:flex;gap:8px;}
-.backup-restore-btn{background:var(--navy);color:#fff;border:none;font-family:var(--sans);font-size:13px;font-weight:500;padding:8px 18px;border-radius:7px;cursor:pointer;flex:1;transition:all 0.15s;}
-.backup-restore-btn:hover{background:var(--teal);}
-.backup-dismiss-btn{background:transparent;color:var(--muted);border:1px solid var(--border);font-family:var(--sans);font-size:13px;padding:8px 14px;border-radius:7px;cursor:pointer;transition:all 0.15s;}
-.backup-dismiss-btn:hover{border-color:var(--red);color:var(--red);}
+/* backup banner removed */
 .reconnect-banner{background:var(--light);border:1px solid var(--border);border-radius:8px;padding:9px 16px;display:none;align-items:center;gap:10px;margin-bottom:0.75rem;flex-wrap:wrap;}
 .reconnect-banner.visible{display:flex;}
 .reconnect-banner-text{font-size:13px;color:var(--teal);flex:1;}
@@ -437,7 +426,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v6.7</span>
+    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v7.0</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -512,19 +501,6 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <button class="btn-go-back" id="btn-go-back" onclick="undoReset()">↩ Go back to previous session</button>
     <div class="error-banner" id="error-banner"></div>
     <button onclick="openDebugPanel()" style="background:transparent;border:none;font-family:var(--mono);font-size:11px;color:#aaa;cursor:pointer;padding:4px 8px;text-decoration:underline;">🐛 view debug logs</button>
-    <div class="backup-banner" id="backup-banner">
-      <div class="backup-banner-top">
-        <div class="backup-banner-icon">💾</div>
-        <div class="backup-banner-text">
-          <strong id="backup-banner-title">Local backup found</strong>
-          <div class="backup-age" id="backup-banner-age"></div>
-        </div>
-      </div>
-      <div class="backup-banner-btns">
-        <button class="backup-restore-btn" id="backup-restore-btn" onclick="restoreBackupFromBanner()">↩ Restore session</button>
-        <button class="backup-dismiss-btn" onclick="document.getElementById('backup-banner').classList.remove('visible')">Start fresh</button>
-      </div>
-    </div>
   </section>
 
   <!-- App screen -->
@@ -1039,14 +1015,13 @@ function parseCSV(text){
 
 function finishLoad(msg){
   // Reset dismissal flags — but respect persisted dup dismissed state
-  try{dupDismissed=localStorage.getItem('anz_dup_dismissed')==='true';}catch(e){dupDismissed=false;}
   autocatDismissed=false;
   showDupsOnly=false;
   selectedIds.clear();
   detectDuplicates();
   runAutoCatSilent();
   buildCatFilter();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();
-  if(driveToken)driveSaveSession();else startAutoBackup();
+  if(driveToken)driveSaveSession();
   toast(msg);
 }
 
@@ -1064,8 +1039,7 @@ function detectDuplicates(){
   const n=dups.size;
   // Read persisted dismissed state
   if(!dupDismissed){
-    try{dupDismissed=localStorage.getItem('anz_dup_dismissed')==='true';}catch(e){}
-  }
+    }
   // If dismissed — clear all flags so yellow highlights don't show
   if(dupDismissed){allRows.forEach(r=>r.isDup=false);}
   if(n>0&&!dupDismissed){
@@ -1088,7 +1062,6 @@ function dismissDups(){
   dupDismissed=true;
   // Clear the dup flag on every row so highlights disappear
   allRows.forEach(r=>r.isDup=false);
-  try{localStorage.setItem('anz_dup_dismissed','true');}catch(e){}
   const banner=document.getElementById('dup-banner');
   if(banner){banner.classList.remove('visible');banner.style.display='none';}
   showDupsOnly=false;
@@ -1146,7 +1119,6 @@ function applyAutoCat(){
 }
 function dismissAutocat(){
   autocatDismissed=true;
-  try{localStorage.setItem('anz_autocat_dismissed','true');}catch(e){}
   // Mark suggested rows so they won't be re-suggested after next upload
   autoCatSuggestions.forEach(s=>{
     const r=allRows.find(r=>r.id===s.id);
@@ -1676,7 +1648,6 @@ function showDriveSignInButton(){
     const mBtn=document.getElementById('mmenu-drive');
     if(mBtn)mBtn.style.display='block';
   }
-  if(!allRows.length)checkAutoBackup();
 }
 
 function driveSignOut(){
@@ -1813,11 +1784,11 @@ async function driveSaveSession(){
     const t=new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
     driveSetStatus('synced','Synced · '+t);
     lastSavedAt=savedAt;
-    try{localStorage.setItem('anz_tracker_autosave',payload);}catch(e2){}
+    // local autosave removed
   }catch(e){
     driveSetStatus('error','Sync failed — saved locally');
     const fallback={version:3,savedAt:new Date().toISOString(),sessionName,rules,rows:allRows.map(r=>r.receiptFile?{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,data:null,stripped:true}}:r).map(r=>({...r,date:dateToStr(r.date)}))};
-    try{localStorage.setItem('anz_tracker_autosave',JSON.stringify(fallback));}catch(e2){}
+    // local autosave removed
   }
 }
 
@@ -1851,55 +1822,10 @@ function startDrivePollTimer(){
 }
 
 // ── Local auto-backup fallback ────────────────────────────────────────────────
-function startAutoBackup(){
-  if(driveToken){startDriveSyncTimer();return;}
-  if(autoBackupTimer)clearInterval(autoBackupTimer);
-  autoBackupTimer=setInterval(()=>{
-    if(!allRows.length)return;
-    const payload={version:3,savedAt:new Date().toISOString(),sessionName,rules,
-      rows:serializeRows(allRows)};
-    try{
-      localStorage.setItem('anz_tracker_autosave',JSON.stringify(payload));
-    }catch(e){
-      if(e.name==='QuotaExceededError'||e.name==='NS_ERROR_DOM_QUOTA_REACHED'||(e.message&&e.message.toLowerCase().includes('quota'))){
-        // Save lightweight version without base64 receipt data
-        const stripped={...payload,rows:payload.rows.map(r=>r.receiptFile?{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,data:null,stripped:true}}:r)};
-        try{localStorage.setItem('anz_tracker_autosave',JSON.stringify(stripped));}catch(e2){}
-      }
-    }
-  },30000);
-}
+function startAutoBackup(){} // Removed — Drive is the only storage
 
-let _pendingBackupData=null;
-function checkAutoBackup(){
-  try{
-    const saved=localStorage.getItem('anz_tracker_autosave');
-    if(!saved)return;
-    const d=JSON.parse(saved);
-    if(!d.rows||!d.rows.length)return;
-    const ageMs=Date.now()-new Date(d.savedAt).getTime();
-    const ageMins=Math.round(ageMs/60000);
+function checkAutoBackup(){} // noop — Drive only
 
-    // Auto-restore silently if backup is very recent (< 5 min) — user clearly just had it open
-    if(ageMs<5*60*1000){
-      applyBackupData(d);
-      toast('✓ Session restored from recent backup');
-      return;
-    }
-
-    // Otherwise show a non-blocking banner
-    _pendingBackupData=d;
-    const banner=document.getElementById('backup-banner');
-    const title=document.getElementById('backup-banner-title');
-    const age=document.getElementById('backup-banner-age');
-    if(!banner)return;
-    const h=Math.floor(ageMins/60);const m=ageMins%60;
-    const ageStr=h>0?`${h}h ${m}m ago`:`${ageMins} min${ageMins!==1?'s':''} ago`;
-    title.textContent=`${d.rows.length} transactions found — ${ageStr}`;
-    age.textContent=`Last saved: ${new Date(d.savedAt).toLocaleString('en-AU',{dateStyle:'short',timeStyle:'short'})}${d.sessionName?' · '+d.sessionName:''}`;
-    banner.classList.add('visible');
-  }catch(e){}
-}
 
 function restoreBackupFromBanner(){
   if(!_pendingBackupData)return;
@@ -1917,8 +1843,7 @@ function applyBackupData(d){
   });
   if(d.rules&&Array.isArray(d.rules))rules=d.rules;
   sessionName=d.sessionName||'';
-  try{dupDismissed=localStorage.getItem('anz_dup_dismissed')==='true';}catch(e){}
-  detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();startAutoBackup();
+  detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels()
 }
 
 // ── App state ─────────────────────────────────────────────────────────────────
@@ -1953,9 +1878,7 @@ function resetAll(){
   document.getElementById('error-banner').style.display='none';
   document.getElementById('dup-banner').classList.remove('visible');
   document.getElementById('autocat-banner').classList.remove('visible');
-  localStorage.removeItem('anz_tracker_autosave');
-  localStorage.removeItem('anz_dup_dismissed');
-  localStorage.removeItem('anz_autocat_dismissed');
+  // Local session data not used — Drive only
   if(driveToken){driveSetStatus('synced','Drive ready');}
   closeMobileMenu();syncMobileMenu(false);
 
@@ -1979,7 +1902,7 @@ function undoReset(){
   backBtn._snapshot=null;
   dupDismissed=false;autocatDismissed=false;showDupsOnly=false;selectedIds.clear();
   detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();
-  if(driveToken)startDriveSyncTimer();else startAutoBackup();
+  if(driveToken)startDriveSyncTimer();
   toast('↩ Back to your session');
 }
 function showError(msg,inApp){const e=document.getElementById(inApp?'error-banner-app':'error-banner');e.textContent='⚠ '+msg;e.style.display='block';}
@@ -2020,7 +1943,7 @@ function loadSession(file){
       if(d.rules&&Array.isArray(d.rules))rules=d.rules;
       sessionName=d.sessionName||file.name.replace('.json','');
       dupDismissed=false;autocatDismissed=false;showDupsOnly=false;selectedIds.clear();
-      detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();startAutoBackup();
+      detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels()
       toast('✓ Session restored — '+allRows.length+' transactions');
     }catch(err){showError('Could not load session: '+err.message,false);}
   };
@@ -2183,68 +2106,7 @@ async function ocrWithRetry(dataUrl,filename,attempt=0){
   }catch(e){dbg('Claude OCR parse error',{filename,error:e.message});return null;}
 }
 
-async function ocrReceiptWithClaude(dataUrl,filename){
-  try{
-    // Extract base64 and media type
-    const commaIdx=dataUrl.indexOf(',');
-    const header=dataUrl.slice(0,commaIdx);
-    const base64=dataUrl.slice(commaIdx+1);
-    let mediaType=header.match(/data:([^;]+)/)?.[1]||'image/jpeg';
 
-    // Claude supports: image/jpeg, image/png, image/gif, image/webp
-    // Compressed images from compressImage() are always image/jpeg
-    if(!['image/jpeg','image/png','image/gif','image/webp'].includes(mediaType)){
-      mediaType='image/jpeg';
-    }
-
-    const apiKey=getApiKey();
-    if(!apiKey){dbg('No API key — skipping OCR',{filename});return null;}
-    const response=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-5',
-        max_tokens:150,
-        messages:[{
-          role:'user',
-          content:[
-            {type:'image',source:{type:'base64',media_type:mediaType,data:base64}},
-            {type:'text',text:'Extract from this receipt or invoice: the store/merchant name, total amount paid, and transaction date. Reply with ONLY a JSON object, no other text: {"merchant": "Store Name", "amount": 0.00, "date": "DD/MM/YYYY"}. Use null for any field you cannot find. Use the final total (not subtotals). For date use the receipt/transaction date shown.'}
-          ]
-        }]
-      })
-    });
-
-    if(!response.ok){
-      dbg('Claude OCR API error',{status:response.status,filename});
-      return null;
-    }
-
-    const data=await response.json();
-    const text=data.content?.find(b=>b.type==='text')?.text||'';
-    dbg('Claude OCR raw response',{filename,text});
-
-    // Parse JSON from response
-    const clean=text.replace(/```json|```/g,'').trim();
-    const parsed=JSON.parse(clean);
-
-    const amount=parsed.amount?parseFloat(parsed.amount):null;
-    let date=null;
-    if(parsed.date){
-      date=extractDateFromText(parsed.date);
-    }
-    // Also pass back merchant/description text from OCR for name matching
-    // Direct merchant name from Claude's structured response
-    const merchant=parsed.merchant||parsed.vendor||parsed.store||null;
-    const ocrText=merchant||text;
-
-    if(!amount&&!date&&!merchant)return null;
-    return{amount,date,ocrText,merchant};
-  }catch(e){
-    dbg('Claude OCR parse error',{filename,error:e.message});
-    return null;
-  }
-}
 
 // ── Bulk Receipt Upload ───────────────────────────────────────────────────────
 // PDF.js loaded lazily only if fast extraction fails
@@ -2579,15 +2441,13 @@ function matchAllItems(){
 
     const available=allRows.filter(r=>r.isDebit&&!r.receiptFile);
 
-    // Phase 1: amount + date match
-    if(item.parsedAmount||item.parsedDate){
+    // Phase 1: BOTH amount AND date required — date-only matching is too loose
+    // If only one is available, skip to Phase 2/3 which requires name confirmation
+    if(item.parsedAmount!==null&&item.parsedDate!==null){
       const candidates=available.filter(r=>{
-        let amtMatch=true,dateMatch=true;
-        if(item.parsedAmount!==null)amtMatch=Math.abs(r.amount-item.parsedAmount)<0.015;
-        if(item.parsedDate!==null&&r.date instanceof Date){
-          dateMatch=Math.abs(r.date.getTime()-item.parsedDate.getTime())<=86400000*7;
-        }
-        return amtMatch&&dateMatch;
+        if(Math.abs(r.amount-item.parsedAmount)>=0.015)return false;
+        if(!(r.date instanceof Date))return false;
+        return Math.abs(r.date.getTime()-item.parsedDate.getTime())<=86400000*7;
       });
       dbg('Phase1',{name:item.name,candidates:candidates.length});
       if(candidates.length>0){
@@ -2601,6 +2461,8 @@ function matchAllItems(){
         }
         return;
       }
+    } else {
+      dbg('Phase1 skipped — missing amount or date',{name:item.name,amount:item.parsedAmount,date:item.parsedDate});
     }
 
     // Phase 2: name-only match (always runs when Phase 1 finds nothing)
@@ -2618,7 +2480,8 @@ function matchAllItems(){
     }
 
     // Phase 3: amount + strong name match, no date (covers layby/presell/deposit gaps)
-    if(item.parsedAmount&&item.merchantHint){
+    // Requires a real positive amount — prevents refund receipts from false-matching
+    if(item.parsedAmount!==null&&item.parsedAmount>0&&item.merchantHint){
       const p3=available
         .map(r=>({r,score:merchantSimilarity(item.merchantHint,r.description)}))
         .filter(s=>s.score>=0.6&&Math.abs(s.r.amount-item.parsedAmount)<0.015)
@@ -3278,35 +3141,21 @@ const _mv=document.getElementById('mmenu-version');
 if(_vb&&_mv)_mv.textContent=_vb.textContent;
 window.addEventListener('resize',()=>{if(analyticsOpen)renderChart();});
 window.addEventListener('load',()=>{
-  dbg('page load',{protocol:window.location.protocol,wasSigned:localStorage.getItem('drive_was_signed_in'),hasBackup:!!localStorage.getItem('anz_tracker_autosave'),userAgent:navigator.userAgent.slice(0,80)});
+  dbg('page load',{protocol:window.location.protocol,wasSigned:localStorage.getItem('drive_was_signed_in'),userAgent:navigator.userAgent.slice(0,80)});
   initPWA();
   const wasSigned=localStorage.getItem('drive_was_signed_in')==='true';
+
+  // Clear any old local session data — Drive is the only storage now
+  try{
+    localStorage.removeItem('anz_tracker_autosave');
+    localStorage.removeItem('anz_dup_dismissed');
+    localStorage.removeItem('anz_autocat_dismissed');
+  }catch(e){}
+
   // Ensure Drive status starts hidden on fresh session
   if(!wasSigned){
     const ds=document.getElementById('drive-status');
     if(ds)ds.classList.remove('vis');
-  }
-
-  // ── Step 1: Load data immediately from localStorage so user never sees blank screen ──
-  if(wasSigned){
-    const saved=localStorage.getItem('anz_tracker_autosave');
-    if(saved){
-      try{
-        const d=JSON.parse(saved);
-        if(d.rows&&d.rows.length){
-          allRows=d.rows.map(r=>{
-            let dt=r.date;
-            if(typeof dt==='string'){const m=dt.match(/^(\d{4})-(\d{2})-(\d{2})/);dt=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(dt);}
-            return{...r,date:dt,bpType:r.bpType||'business',isDup:r.isDup||false,autoCat:r.autoCat||false};
-          });
-          if(d.rules&&Array.isArray(d.rules))rules=d.rules;
-          sessionName=d.sessionName||'';
-          dupDismissed=false;
-          try{dupDismissed=localStorage.getItem('anz_dup_dismissed')==='true';}catch(e){}
-          detectDuplicates();buildCatFilter();buildBulkCatSel();showApp();updateKPIs();renderTable();renderBAS();updatePeriodLabels();
-        }
-      }catch(e){}
-    }
   }
 
   // Resume button is always visible on HTTPS — hide only when not on HTTPS
@@ -3315,7 +3164,7 @@ window.addEventListener('load',()=>{
     if(resumeBtn)resumeBtn.style.display='none';
   }
 
-  // ── Step 2: Reconnect Drive silently in the background ──
+  // ── Connect to Drive — only source of truth ──
   if(window.location.protocol==='https:'){
     if(wasSigned){
       driveSetStatus('syncing','Reconnecting…');
@@ -3324,10 +3173,7 @@ window.addEventListener('load',()=>{
       document.getElementById('btn-drive-signin').classList.add('vis');
       const mBtn=document.getElementById('mmenu-drive');
       if(mBtn)mBtn.style.display='block';
-      if(!allRows.length)checkAutoBackup();
     }
-  } else {
-    if(!allRows.length)checkAutoBackup();
   }
 });
 
@@ -3345,7 +3191,6 @@ function waitForGIS(callback,attempts=0){
       driveSetStatus('error','Google blocked');
     } else {
       toast('⚠ Could not load Google — check your connection or ad blocker');
-      checkAutoBackup();
     }
   }
 }
