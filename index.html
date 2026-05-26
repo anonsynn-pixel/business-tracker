@@ -370,7 +370,14 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
 .br-item.ambiguous{border-color:var(--orange-border);background:var(--orange-bg);}
 .br-item.unmatched{border-color:#e0e0e0;background:var(--surface2);}
 .br-item.image-item{border-color:var(--border);background:var(--pale);}
-.br-thumb{width:44px;height:44px;object-fit:cover;border-radius:5px;flex-shrink:0;}
+.br-thumb{width:44px;height:44px;object-fit:cover;border-radius:5px;flex-shrink:0;cursor:zoom-in;transition:opacity 0.15s;}
+.br-thumb:hover{opacity:0.85;}
+#br-lightbox{position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:9999;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:16px;}
+#br-lightbox.open{display:flex;}
+#br-lightbox-img{max-width:100%;max-height:80vh;object-fit:contain;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.5);}
+#br-lightbox-name{color:rgba(255,255,255,0.7);font-family:var(--mono);font-size:12px;text-align:center;}
+#br-lightbox-close{position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:20px;width:36px;height:36px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s;}
+#br-lightbox-close:hover{background:rgba(255,255,255,0.3);}
 .br-thumb-pdf{width:44px;height:44px;background:var(--red-bg);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
 .br-item-info{flex:1;min-width:0;}
 .br-item-name{font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -426,7 +433,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v7.1</span>
+    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v7.3</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -2418,15 +2425,21 @@ function extractMerchantFromText(text){
   return null;
 }
 
+// Generic words that appear in many company names — excluded from similarity scoring
+const GENERIC_WORDS=new Set(['pty','ltd','pty','limited','australia','australian','the',
+  'and','for','group','services','solutions','holdings','international','global','corp',
+  'corporation','company','co','inc','incorporated','trust','fund']);
+
 function merchantSimilarity(receiptMerchant,txDesc){
-  // Score how similar receipt merchant name is to transaction description
   if(!receiptMerchant)return 0;
   const tx=cleanMerchant(txDesc).toLowerCase();
-  const words=receiptMerchant.split(/\s+/).filter(w=>w.length>2);
+  // Filter out generic words — only score on meaningful brand words
+  const words=receiptMerchant.split(/\s+/)
+    .filter(w=>w.length>2&&!GENERIC_WORDS.has(w.toLowerCase()));
   if(!words.length)return 0;
   let hits=0;
   words.forEach(w=>{if(tx.includes(w))hits++;});
-  return hits/words.length; // 0-1 score
+  return hits/words.length;
 }
 
 function matchAllItems(){
@@ -2442,7 +2455,8 @@ function matchAllItems(){
 
     dbg('matchAllItems',{name:item.name,amount:item.parsedAmount,date:item.parsedDate?dateToStr(item.parsedDate):null,hint:item.merchantHint});
 
-    const available=allRows.filter(r=>r.isDebit&&!r.receiptFile);
+    // Include transactions with stripped receipts — they need replacing
+    const available=allRows.filter(r=>r.isDebit&&(!r.receiptFile||r.receiptFile.stripped||!r.receiptFile.data));
 
     // Phase 1: BOTH amount AND date required — date-only matching is too loose
     // If only one is available, skip to Phase 2/3 which requires name confirmation
@@ -2528,7 +2542,7 @@ function renderBulkResults(){
 
   const renderItem=(item,idx)=>{
     const thumb=item.type==='image'
-      ?`<img class="br-thumb" src="${item.dataUrl}">`
+      ?`<img class="br-thumb" src="${item.dataUrl}" onclick="event.stopPropagation();openBrLightbox(${idx})" title="Click to expand">`
       :`<div class="br-thumb-pdf">📄</div>`;
     const detail=item.parsedDate||item.parsedAmount
       ?`${item.parsedDate?fmtDate(item.parsedDate):''}${item.parsedDate&&item.parsedAmount?' · ':''}${item.parsedAmount?fmtAUD(item.parsedAmount):''} ${item.ocrUsed?'<span style="font-size:10px;background:#e8f0ff;color:#4455cc;padding:1px 5px;border-radius:3px;margin-left:2px;">🤖 OCR</span>':''}`
@@ -3108,6 +3122,27 @@ function updateApiKeyUI(){
   if(sub){sub.textContent=hasKey?'PDFs auto-matched · Photos read by Claude 🤖':'PDFs auto-matched by date & amount · Images assigned manually';}
 }
 
+// ── Bulk receipt lightbox ─────────────────────────────────────────────────────
+function openBrLightbox(idx){
+  const item=bulkItems[idx];
+  if(!item||item.type!=='image'||!item.dataUrl)return;
+  const lb=document.getElementById('br-lightbox');
+  const img=document.getElementById('br-lightbox-img');
+  const name=document.getElementById('br-lightbox-name');
+  if(!lb||!img)return;
+  img.src=item.dataUrl;
+  name.textContent=item.name;
+  lb.classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeBrLightbox(){
+  const lb=document.getElementById('br-lightbox');
+  if(lb){lb.classList.remove('open');}
+  document.body.style.overflow='';
+}
+// Close lightbox on Escape key
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeBrLightbox();});
+
 // ── Dark Mode ─────────────────────────────────────────────────────────────────
 function toggleDarkMode(){
   const isDark=document.documentElement.classList.toggle('dark');
@@ -3198,5 +3233,10 @@ function waitForGIS(callback,attempts=0){
   }
 }
 </script>
+<div id="br-lightbox" onclick="closeBrLightbox()">
+  <button id="br-lightbox-close" onclick="closeBrLightbox()">✕</button>
+  <img id="br-lightbox-img" src="" alt="">
+  <div id="br-lightbox-name"></div>
+</div>
 </body>
 </html>
