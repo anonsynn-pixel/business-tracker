@@ -433,7 +433,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v7.3</span>
+    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v7.5</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -2083,7 +2083,7 @@ async function ocrWithRetry(dataUrl,filename,attempt=0){
         model:'claude-sonnet-4-5',max_tokens:150,
         messages:[{role:'user',content:[
           {type:'image',source:{type:'base64',media_type:mediaType,data:base64}},
-          {type:'text',text:'Extract from this receipt or invoice: the store/merchant name, total amount paid, and transaction date. Reply with ONLY a JSON object, no other text: {"merchant": "Store Name", "amount": 0.00, "date": "DD/MM/YYYY"}. Use null for any field you cannot find. Use the final total (not subtotals). For date use the receipt/transaction date shown.'}
+          {type:'text',text:'Extract from this receipt or invoice: the store/merchant name, total amount paid, and transaction date. Reply with ONLY a JSON object, no other text: {"merchant": "Store Name", "amount": 0.00, "date": "DD/MM/YYYY"}. Use null for any field you cannot find. For amount: use the TOTAL AMOUNT line (not subtotal, not GST line) — read each digit carefully including the cents. For date: use the invoice/transaction date shown.'}
         ]}]
       })
     });
@@ -2459,10 +2459,11 @@ function matchAllItems(){
     const available=allRows.filter(r=>r.isDebit&&(!r.receiptFile||r.receiptFile.stripped||!r.receiptFile.data));
 
     // Phase 1: BOTH amount AND date required — date-only matching is too loose
-    // If only one is available, skip to Phase 2/3 which requires name confirmation
+    // Images use wider tolerance (±$0.50) since OCR can misread digits; PDFs use tight (±$0.015)
+    const amtTolerance=item.ocrUsed?0.50:0.015;
     if(item.parsedAmount!==null&&item.parsedDate!==null){
       const candidates=available.filter(r=>{
-        if(Math.abs(r.amount-item.parsedAmount)>=0.015)return false;
+        if(Math.abs(r.amount-item.parsedAmount)>amtTolerance)return false;
         if(!(r.date instanceof Date))return false;
         return Math.abs(r.date.getTime()-item.parsedDate.getTime())<=86400000*7;
       });
@@ -2501,7 +2502,7 @@ function matchAllItems(){
     if(item.parsedAmount!==null&&item.parsedAmount>0&&item.merchantHint){
       const p3=available
         .map(r=>({r,score:merchantSimilarity(item.merchantHint,r.description)}))
-        .filter(s=>s.score>=0.6&&Math.abs(s.r.amount-item.parsedAmount)<0.015)
+        .filter(s=>s.score>=0.6&&Math.abs(s.r.amount-item.parsedAmount)<=(item.ocrUsed?0.50:0.015))
         .sort((a,b)=>b.score-a.score);
       dbg('Phase3 amount+name',{name:item.name,amount:item.parsedAmount,hint:item.merchantHint,count:p3.length});
       if(p3.length>0){
@@ -2639,9 +2640,16 @@ function applyBulkReceipts(){
   // Remove applied items; keep unassigned ones in queue for next attempt
   bulkItems=bulkItems.filter(i=>!i.assignedId||!allRows.find(r=>r.id===i.assignedId)?.receiptFile);
   closeBulkRcpt();
-  detectDuplicates(); // clear dup flags for rows that now have receipts
+  detectDuplicates();
   renderTable();updateBulkBarCount();
-  if(driveToken)driveSaveSession();
+  if(driveToken){
+    // Pause poll timer during save to prevent race condition overwriting applied receipts
+    if(drivePollTimer){clearInterval(drivePollTimer);drivePollTimer=null;}
+    driveSaveSession().then(()=>{
+      // Restart poll after save completes
+      startDrivePollTimer();
+    }).catch(()=>startDrivePollTimer());
+  }
   toast(`✓ ${count} receipt${count!==1?'s':''} attached to transactions`);
 }
 
