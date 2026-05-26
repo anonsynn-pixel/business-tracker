@@ -426,7 +426,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v5.8</span>
+    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v5.9</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -2171,11 +2171,12 @@ async function ocrReceiptWithClaude(dataUrl,filename){
       date=extractDateFromText(parsed.date);
     }
     // Also pass back merchant/description text from OCR for name matching
-    const ocrText=[parsed.merchant,parsed.vendor,parsed.store,parsed.description]
-      .filter(Boolean).join(' ')||text;
+    // Direct merchant name from Claude's structured response
+    const merchant=parsed.merchant||parsed.vendor||parsed.store||null;
+    const ocrText=merchant||text;
 
-    if(!amount&&!date&&!ocrText)return null;
-    return{amount,date,ocrText};
+    if(!amount&&!date&&!merchant)return null;
+    return{amount,date,ocrText,merchant};
   }catch(e){
     dbg('Claude OCR parse error',{filename,error:e.message});
     return null;
@@ -2282,7 +2283,8 @@ async function processBulkFiles(fileList){
         if(ocrResult){
           item.parsedAmount=ocrResult.amount;
           item.parsedDate=ocrResult.date;
-          item.parsedText=ocrResult.ocrText||null; // for merchant name extraction
+          item.parsedText=ocrResult.ocrText||null;
+          item.ocrMerchant=ocrResult.merchant||null; // direct merchant name from Claude
           item.ocrUsed=true;
           dbg('Claude OCR result',{name:file.name,amount:ocrResult.amount,date:ocrResult.date?dateToStr(ocrResult.date):null});
         } else {
@@ -2501,7 +2503,8 @@ function matchAllItems(){
 
     const filenameMerchant=extractMerchantFromFilename(item.name);
     const textMerchant=item.parsedText?extractMerchantFromText(item.parsedText):null;
-    item.merchantHint=textMerchant||filenameMerchant||null;
+    // ocrMerchant is the direct name from Claude — use it first, bypasses fragile text patterns
+    item.merchantHint=((item.ocrMerchant||textMerchant||filenameMerchant)||'').toLowerCase()||null;
 
     dbg('matchAllItems',{name:item.name,amount:item.parsedAmount,date:item.parsedDate?dateToStr(item.parsedDate):null,hint:item.merchantHint});
 
