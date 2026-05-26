@@ -426,7 +426,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v7.0</span>
+    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v7.1</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -2242,8 +2242,11 @@ async function processBulkFiles(fileList){
   // Sample 200 chars from middle of base64 to detect same-content files (start is identical for all JPEGs)
   const contentSample=url=>{const b=url||'';const mid=Math.floor(b.length/2);return b.slice(mid,mid+200);};
   const existingContent=new Set(bulkItems.map(i=>contentSample(i.dataUrl)));
-  // Also check files already attached to transactions
-  const attachedNames=new Set(allRows.filter(r=>r.receiptFile).map(r=>r.receiptFile.name));
+  // Files already attached with REAL data — block re-upload
+  const attachedNames=new Set(
+    allRows.filter(r=>r.receiptFile&&r.receiptFile.data&&!r.receiptFile.stripped)
+           .map(r=>r.receiptFile.name)
+  );
 
   let skippedDup=0,skippedAttached=0;
   newItems.forEach(i=>{
