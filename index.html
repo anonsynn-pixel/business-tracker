@@ -2417,39 +2417,41 @@ function extractPdfRaw(dataUrl){
 }
 
 function extractAmount(text){
-  // Priority 1: explicit "total inc gst" / "payment tender" / "amount paid" patterns
-  // These are the most reliable for what was actually charged
-  const priority=[
-    /(?:total\s+\(inc\.?\s*gst\)|total\s+inc\.?\s*gst|total\s+amount\s+\(aud\))[^\d$\n]{0,10}\$?\s*([\d,]+\.[\d]{2})/gi,
-    /(?:payment\s+tender|amount\s+paid|you\s+paid|charged|debit\s+card|visa|mastercard|eftpos)[^\d$\n]{0,20}\$?\s*([\d,]+\.[\d]{2})/gi,
-    /(?:total\s+amount\s+payable|total\s+amount\s+due|total\s+paid|total\s+due|grand\s+total|amount\s+payable)[^\d$\n]{0,20}\$?\s*([\d,]+\.[\d]{2})/gi,
-    /(?:total|amount)[^\d$\n]{0,20}\$?\s*([\d,]+\.[\d]{2})/gi,
-    /\$?\s*([\d,]+\.[\d]{2})\s*(?:total|paid|due|payable)/gi,
-  ];
+  // Validation: ignore stray amounts like ABNs, barcodes, item IDs.
+  const ok=v=>(v>0.50&&v<50000);
+  const pick=m=>{const v=parseFloat(m[1].replace(/,/g,''));return ok(v)?v:null;};
 
-  // Try priority patterns in order — return first hit
-  for(const pat of priority.slice(0,3)){
+  // Pass 1 — explicit, unambiguous grand-total / amount-paid phrasings. First match wins.
+  const explicit=[
+    /grand\s*total[^\d$\n]{0,15}\$?\s*([\d,]+\.[\d]{2})/gi,
+    /total\s*(?:amount\s*)?(?:payable|due|paid|\(aud\))[^\d$\n]{0,15}\$?\s*([\d,]+\.[\d]{2})/gi,
+    /amount\s*(?:payable|paid|due|charged)[^\d$\n]{0,15}\$?\s*([\d,]+\.[\d]{2})/gi,
+    /total\s*(?:incl?\.?\s*gst|\(incl?\.?\s*gst\))[^\d$\n]{0,15}\$?\s*([\d,]+\.[\d]{2})/gi,
+    /(?:you\s*paid|payment\s*tender|amount\s*charged)[^\d$\n]{0,20}\$?\s*([\d,]+\.[\d]{2})/gi,
+  ];
+  for(const pat of explicit){
     const re=new RegExp(pat.source,pat.flags);
     const m=re.exec(text);
-    if(m){
-      const val=parseFloat(m[1].replace(/,/g,''));
-      if(val>0.50&&val<50000)return val;
-    }
+    if(m){const v=pick(m);if(v)return v;}
   }
 
-  // Fall back to frequency analysis with remaining patterns
-  const amounts=[];
-  for(const pat of priority.slice(3)){
-    let m;const re=new RegExp(pat.source,pat.flags);
-    while((m=re.exec(text))!==null){
-      const val=parseFloat(m[1].replace(/,/g,''));
-      if(val>0.50&&val<50000)amounts.push(val);
-    }
-  }
-  if(!amounts.length)return null;
-  const freq={};let best=null,bestCount=0;
-  amounts.forEach(a=>{freq[a]=(freq[a]||0)+1;if(freq[a]>bestCount){bestCount=freq[a];best=a;}});
-  return best;
+  // Pass 2 — plain "Total $X.XX" but NEVER inside "Subtotal" / "Sub Total" / "Sub-Total".
+  // Receipts list the grand total last, so we keep the LAST matching value.
+  // Using letter-class lookbehind/ahead — \b fails when PDF.js joins text with no
+  // whitespace ("5.99Total$49.99" has no word boundary before "Total"), and the
+  // letter check naturally excludes "Subtotal", "totally", etc.
+  const totalRe=/(?<![a-z])total(?![a-z])[^\d$\n]{0,15}\$?\s*([\d,]+\.[\d]{2})/gi;
+  let m,last=null;
+  while((m=totalRe.exec(text))!==null){last=m;}
+  if(last){const v=pick(last);if(v)return v;}
+
+  // Pass 3 — amount followed by "total/paid/due/payable"
+  const trailingRe=/\$?\s*([\d,]+\.[\d]{2})\s*(?:total|paid|due|payable)(?![a-z])/gi;
+  let last2=null;
+  while((m=trailingRe.exec(text))!==null){last2=m;}
+  if(last2){const v=pick(last2);if(v)return v;}
+
+  return null;
 }
 
 function expandYear(yy){const y=parseInt(yy);return y<50?2000+y:1900+y;}
