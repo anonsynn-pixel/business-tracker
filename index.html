@@ -433,7 +433,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v8.1</span>
+    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v8.2</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -2094,10 +2094,13 @@ async function ocrWithRetry(dataUrl,filename,attempt=0){
       headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({
         model:'claude-sonnet-4-5',max_tokens:200,temperature:0.1,
-        messages:[{role:'user',content:[
-          {type:'image',source:{type:'base64',media_type:mediaType,data:base64}},
-          {type:'text',text:'Analyze this receipt or invoice. Extract:\n1. "merchant": the store or vendor name.\n2. "amount": the FINAL total amount paid (number only, not subtotal or GST line). Use a negative number for refunds.\n3. "date": the transaction or invoice date in YYYY-MM-DD format.\nReply ONLY with a valid JSON object, no markdown. Example: {"merchant":"Woolworths","amount":45.20,"date":"2026-03-15"}. Use null for missing fields.'}
-        ]}]
+        messages:[
+          {role:'user',content:[
+            {type:'image',source:{type:'base64',media_type:mediaType,data:base64}},
+            {type:'text',text:'Analyze this receipt or invoice. Extract:\n1. "merchant": the store or vendor name.\n2. "amount": the FINAL total amount paid (number only, not subtotal or GST line). Use a negative number for refunds.\n3. "date": the transaction or invoice date in YYYY-MM-DD format.\nReply ONLY with a valid JSON object, no markdown. Example: {"merchant":"Woolworths","amount":45.20,"date":"2026-03-15"}. Use null for missing fields.'}
+          ]},
+          {role:'assistant',content:'{'}
+        ]
       })
     });
     if(response.status===429){
@@ -2114,7 +2117,9 @@ async function ocrWithRetry(dataUrl,filename,attempt=0){
     const data=await response.json();
     const text=data.content?.find(b=>b.type==='text')?.text||'';
     dbg('Claude OCR raw response',{filename,text});
-    const clean=text.replace(/```json|```/g,'').trim();
+    // Response starts with '{' due to assistant prefill — prepend it back if needed
+    const rawText=text.startsWith('{')?text:'{'+text;
+    const clean=rawText.replace(/```json|```/g,'').trim();
     const parsed=JSON.parse(clean);
     // Allow negative amounts (refunds) — phase matching blocks negatives for debit matching
     const amount=parsed.amount&&Math.abs(parsed.amount)>0?parseFloat(parsed.amount):null;
@@ -2204,7 +2209,9 @@ async function processBulkFiles(fileList){
     let dataUrl;
     try{dataUrl=await readFileAsDataUrl(file);dbg('file read as dataUrl',{name:file.name,dataUrlLength:dataUrl.length});}
     catch(e){dbg('readFileAsDataUrl failed',{name:file.name,error:e.message});return null;}
-    if(!isPdf&&file.size>200*1024){const c=await compressImage(file,200);if(c)dataUrl=c;}
+    // Compress lightly for OCR (1.5MB) — heavy compression destroys thermal receipt text
+    // Drive storage compression (200KB) happens separately at save time
+    if(!isPdf&&file.size>1500*1024){const c=await compressImage(file,1500);if(c)dataUrl=c;}
     const item={file,name:file.name,type:isPdf?'pdf':'image',dataUrl,
       parsedDate:null,parsedAmount:null,matchedIds:[],assignedId:null,status:'pending'};
     if(isPdf){
