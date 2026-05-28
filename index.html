@@ -433,7 +433,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v7.5</span>
+    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v7.9</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -1512,7 +1512,7 @@ function viewReceipt(id){
   document.getElementById('rcpt-modal-name').textContent=r.receiptFile.name;
   const c=document.getElementById('rcpt-modal-content');
   if(!r.receiptFile.data||r.receiptFile.stripped){
-    c.innerHTML=`<p style="color:var(--muted);font-size:13px;padding:1rem 0">⚠ File preview not available — this receipt was stored in a local backup that ran out of space.<br><br>The filename <strong>${esc(r.receiptFile.name)}</strong> is recorded. Re-attach the file using + Attach to restore the preview.</p>`;
+    c.innerHTML=`<p style="color:var(--orange);font-size:13px;">⚠ Receipt file too large to store — filename saved only. Use <strong>↻ Replace</strong> to re-attach.</p>`;
   } else if(r.receiptFile.type&&r.receiptFile.type.startsWith('image/')){
     c.innerHTML=`<img class="rcpt-modal-img" src="${r.receiptFile.data}">`;
   } else if(r.receiptFile.type==='application/pdf'){
@@ -1762,10 +1762,23 @@ async function driveSaveSession(){
     const savedAt=new Date().toISOString(); // capture once so payload and lastSavedAt are identical
     let rowsToSave=serializeRows(allRows);
     let payload=JSON.stringify({version:3,savedAt,sessionName,rules,rows:rowsToSave});
-    // If payload exceeds 4MB, strip base64 receipt data (keeps filenames)
-    if(payload.length>4*1024*1024){
+    // Strip only oversized individual receipts (>1MB each) rather than all receipts
+    // Drive appDataFolder supports up to 25MB — no need to strip aggressively
+    const RECEIPT_MAX=1*1024*1024; // 1MB per receipt in base64
+    rowsToSave=rowsToSave.map(r=>{
+      if(!r.receiptFile||!r.receiptFile.data||r.receiptFile.stripped)return r;
+      if(r.receiptFile.data.length>RECEIPT_MAX){
+        dbg('receipt too large, stripping for Drive',{name:r.receiptFile.name,size:r.receiptFile.data.length});
+        return{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,data:null,stripped:true}};
+      }
+      return r;
+    });
+    payload=JSON.stringify({version:3,savedAt,sessionName,rules,rows:rowsToSave});
+    // Final safety check at 25MB
+    if(payload.length>25*1024*1024){
       rowsToSave=rowsToSave.map(r=>r.receiptFile?{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,data:null,stripped:true}}:r);
       payload=JSON.stringify({version:3,savedAt,sessionName,rules,rows:rowsToSave,receiptsStripped:true});
+      dbg('Drive payload exceeded 25MB — stripped all receipts');
     }
     if(driveFileId){
       const patchRes=await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`,{
@@ -2401,15 +2414,6 @@ function extractDateFromText(text){
 }
 
 // ── Merchant name extraction from receipt filename / text ─────────────────────
-function extractMerchantFromFilename(name){
-  // Remove common receipt filename words, extensions, numbers, dates
-  let s=name.replace(/\.[^.]+$/,'') // remove extension
-    .replace(/\b(invoice|receipt|tax|statement|order|purchase|payment|invoice#?|inv|rcpt|pdf)\b/gi,' ')
-    .replace(/[_\-]+/g,' ')
-    .replace(/\d{4,}/g,' ') // remove long numbers (order IDs, dates)
-    .replace(/\s{2,}/g,' ').trim();
-  return s.toLowerCase();
-}
 
 function extractMerchantFromText(text){
   // Look for common "sold by / vendor / from" patterns
@@ -2425,21 +2429,72 @@ function extractMerchantFromText(text){
   return null;
 }
 
-// Generic words that appear in many company names — excluded from similarity scoring
-const GENERIC_WORDS=new Set(['pty','ltd','pty','limited','australia','australian','the',
-  'and','for','group','services','solutions','holdings','international','global','corp',
-  'corporation','company','co','inc','incorporated','trust','fund']);
+// Words excluded from merchant similarity scoring — too generic to be meaningful
+const GENERIC_WORDS=new Set([
+  // Legal entity words
+  'pty','ltd','limited','corp','corporation','company','co','inc','incorporated',
+  'trust','fund','holdings','group','ventures',
+  // Location qualifiers
+  'australia','australian','online','store','stores','shop','market','markets',
+  // Common qualifiers that appear in many merchant names
+  'world','global','international','services','solutions','direct','express','plus',
+  'premium','pro','digital','central','super',
+  // Grammatical
+  'the','and','for','of','at','in',
+  // Receipt-specific
+  'invoice','receipt','order','transaction','payment'
+]);
+
+// AU brand aliases — short/ambiguous names mapped to what appears in ANZ descriptions
+const BRAND_ALIASES={
+  'jb':['jb hi-fi','jb hifi','jbhifi'],
+  'eb':['eb games'],
+  'kmart':['kmart'],
+  'bigw':['big w','bigw'],
+  'auspost':['australian postal','australia post'],
+  'xero':['xero','shopify'],
+};
 
 function merchantSimilarity(receiptMerchant,txDesc){
   if(!receiptMerchant)return 0;
   const tx=cleanMerchant(txDesc).toLowerCase();
-  // Filter out generic words — only score on meaningful brand words
-  const words=receiptMerchant.split(/\s+/)
-    .filter(w=>w.length>2&&!GENERIC_WORDS.has(w.toLowerCase()));
+  const hint=receiptMerchant.toLowerCase();
+
+  // Check brand aliases first — exact short brand match
+  for(const[brand,aliases] of Object.entries(BRAND_ALIASES)){
+    if(hint.includes(brand)){
+      if(aliases.some(a=>tx.includes(a)||a.includes(tx.split(' ')[0])))return 1.0;
+    }
+  }
+
+  // Extract meaningful words from hint (min 2 chars, not generic)
+  const words=hint.split(/\s+/).filter(w=>w.length>1&&!GENERIC_WORDS.has(w));
   if(!words.length)return 0;
-  let hits=0;
-  words.forEach(w=>{if(tx.includes(w))hits++;});
-  return hits/words.length;
+
+  // Count hits — how many hint words appear in the transaction
+  const hits=words.filter(w=>tx.includes(w));
+
+  // Any single meaningful word match is significant; weight towards full match
+  if(hits.length===0)return 0;
+  const ratio=hits.length/words.length;
+
+  // Boost: if a long meaningful word (4+chars) matches, score is at least 0.5
+  const hasLongHit=hits.some(w=>w.length>=4);
+  return hasLongHit?Math.max(ratio,0.5):ratio;
+}
+
+function extractMerchantFromFilename(name){
+  let s=name.replace(/\.[^.]+$/,'') // remove extension
+    // Remove receipt/document-type words
+    .replace(/\b(invoice|receipt|tax|statement|order|purchase|payment|inv|rcpt|transaction)\b/gi,' ')
+    // Remove numbers appended directly to words (e.g. "Australia12" → "Australia")
+    .replace(/([a-zA-Z])\d+\b/g,'$1')
+    // Remove standalone long numbers (order IDs, invoice numbers)
+    .replace(/\b\d{4,}\b/g,' ')
+    // Clean separators
+    .replace(/[-_]+/g,' ')
+    .replace(/\s{2,}/g,' ').trim();
+  return s.toLowerCase();
 }
 
 function matchAllItems(){
@@ -2450,8 +2505,13 @@ function matchAllItems(){
 
     const filenameMerchant=extractMerchantFromFilename(item.name);
     const textMerchant=item.parsedText?extractMerchantFromText(item.parsedText):null;
-    // ocrMerchant is the direct name from Claude — use it first, bypasses fragile text patterns
-    item.merchantHint=((item.ocrMerchant||textMerchant||filenameMerchant)||'').toLowerCase()||null;
+    // Images: ocrMerchant (Claude) is most reliable
+    // PDFs: filename is more reliable than raw text extraction (browser-printed PDFs have garbage text)
+    let hint;
+    if(item.ocrMerchant){hint=item.ocrMerchant;}
+    else if(item.type==='pdf'){hint=filenameMerchant||textMerchant||null;}
+    else{hint=textMerchant||filenameMerchant||null;}
+    item.merchantHint=(hint||'').toLowerCase()||null;
 
     dbg('matchAllItems',{name:item.name,amount:item.parsedAmount,date:item.parsedDate?dateToStr(item.parsedDate):null,hint:item.merchantHint});
 
@@ -2484,7 +2544,7 @@ function matchAllItems(){
     }
 
     // Phase 2: name-only match (always runs when Phase 1 finds nothing)
-    if(item.merchantHint&&item.merchantHint.length>3){
+    if(item.merchantHint&&item.merchantHint.length>1){
       const ns=available.map(r=>({r,score:merchantSimilarity(item.merchantHint,r.description)}))
         .filter(s=>s.score>=0.4).sort((a,b)=>b.score-a.score);
       dbg('Phase2',{name:item.name,hint:item.merchantHint,count:ns.length,top:ns[0]?{score:ns[0].score,tx:cleanMerchant(ns[0].r.description)}:null});
@@ -2544,7 +2604,7 @@ function renderBulkResults(){
   const renderItem=(item,idx)=>{
     const thumb=item.type==='image'
       ?`<img class="br-thumb" src="${item.dataUrl}" onclick="event.stopPropagation();openBrLightbox(${idx})" title="Click to expand">`
-      :`<div class="br-thumb-pdf">📄</div>`;
+      :`<div class="br-thumb-pdf" onclick="event.stopPropagation();openBrPdfPreview(${idx})" style="cursor:pointer" title="Click to preview PDF">📄</div>`;
     const detail=item.parsedDate||item.parsedAmount
       ?`${item.parsedDate?fmtDate(item.parsedDate):''}${item.parsedDate&&item.parsedAmount?' · ':''}${item.parsedAmount?fmtAUD(item.parsedAmount):''} ${item.ocrUsed?'<span style="font-size:10px;background:#e8f0ff;color:#4455cc;padding:1px 5px;border-radius:3px;margin-left:2px;">🤖 OCR</span>':''}`
       :'No date/amount extracted';
@@ -3131,6 +3191,26 @@ function updateApiKeyUI(){
 }
 
 // ── Bulk receipt lightbox ─────────────────────────────────────────────────────
+function openBrPdfPreview(idx){
+  const item=bulkItems[idx];
+  if(!item||item.type!=='pdf'||!item.dataUrl)return;
+  const lb=document.getElementById('br-lightbox');
+  const img=document.getElementById('br-lightbox-img');
+  const name=document.getElementById('br-lightbox-name');
+  if(!lb)return;
+  // Replace img with iframe for PDF preview
+  const existing=document.getElementById('br-pdf-frame');
+  if(existing)existing.remove();
+  const frame=document.createElement('iframe');
+  frame.id='br-pdf-frame';
+  frame.src=item.dataUrl;
+  frame.style.cssText='width:90vw;max-width:700px;height:75vh;border:none;border-radius:8px;background:#fff;';
+  img.style.display='none';
+  img.parentNode.insertBefore(frame,img);
+  name.textContent=item.name;
+  lb.classList.add('open');
+  document.body.style.overflow='hidden';
+}
 function openBrLightbox(idx){
   const item=bulkItems[idx];
   if(!item||item.type!=='image'||!item.dataUrl)return;
@@ -3146,6 +3226,10 @@ function openBrLightbox(idx){
 function closeBrLightbox(){
   const lb=document.getElementById('br-lightbox');
   if(lb){lb.classList.remove('open');}
+  const frame=document.getElementById('br-pdf-frame');
+  if(frame)frame.remove();
+  const img=document.getElementById('br-lightbox-img');
+  if(img)img.style.display='';
   document.body.style.overflow='';
 }
 // Close lightbox on Escape key
