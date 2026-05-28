@@ -433,7 +433,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a3ad" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/></svg>
     <span class="logo-text">Purchase Tracker</span>
     <span class="logo-badge">ANZ</span>
-    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v7.9</span>
+    <span id="version-badge" style="font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.45);letter-spacing:0.04em;padding-left:2px;">v8.1</span>
   </div>
   <div class="header-right">
     <!-- Drive sync status -->
@@ -2093,10 +2093,10 @@ async function ocrWithRetry(dataUrl,filename,attempt=0){
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({
-        model:'claude-sonnet-4-5',max_tokens:150,
+        model:'claude-sonnet-4-5',max_tokens:200,temperature:0.1,
         messages:[{role:'user',content:[
           {type:'image',source:{type:'base64',media_type:mediaType,data:base64}},
-          {type:'text',text:'Extract from this receipt or invoice: the store/merchant name, total amount paid, and transaction date. Reply with ONLY a JSON object, no other text: {"merchant": "Store Name", "amount": 0.00, "date": "DD/MM/YYYY"}. Use null for any field you cannot find. For amount: use the TOTAL AMOUNT line (not subtotal, not GST line) — read each digit carefully including the cents. For date: use the invoice/transaction date shown.'}
+          {type:'text',text:'Analyze this receipt or invoice. Extract:\n1. "merchant": the store or vendor name.\n2. "amount": the FINAL total amount paid (number only, not subtotal or GST line). Use a negative number for refunds.\n3. "date": the transaction or invoice date in YYYY-MM-DD format.\nReply ONLY with a valid JSON object, no markdown. Example: {"merchant":"Woolworths","amount":45.20,"date":"2026-03-15"}. Use null for missing fields.'}
         ]}]
       })
     });
@@ -2116,9 +2116,15 @@ async function ocrWithRetry(dataUrl,filename,attempt=0){
     dbg('Claude OCR raw response',{filename,text});
     const clean=text.replace(/```json|```/g,'').trim();
     const parsed=JSON.parse(clean);
-    const amount=parsed.amount&&parsed.amount>0?parseFloat(parsed.amount):null;
+    // Allow negative amounts (refunds) — phase matching blocks negatives for debit matching
+    const amount=parsed.amount&&Math.abs(parsed.amount)>0?parseFloat(parsed.amount):null;
     let date=null;
-    if(parsed.date)date=extractDateFromText(parsed.date);
+    if(parsed.date){
+      // Claude now returns YYYY-MM-DD — parse directly if possible
+      const isoMatch=String(parsed.date).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if(isoMatch){date=new Date(+isoMatch[1],+isoMatch[2]-1,+isoMatch[3]);}
+      else{date=extractDateFromText(parsed.date);}
+    }
     const merchant=parsed.merchant||parsed.vendor||parsed.store||null;
     const ocrText=merchant||text;
     if(!amount&&!date&&!merchant)return null;
@@ -2364,13 +2370,29 @@ function extractPdfRaw(dataUrl){
 }
 
 function extractAmount(text){
-  const patterns=[
-    /(?:total amount payable|total amount due|amount payable|total paid|total due|amount paid|grand total|to pay|you paid)[^\d$]*\$?\s*([\d,]+\.[\d]{2})/gi,
-    /(?:total|amount)[^\d$\n]{0,20}\$\s*([\d,]+\.[\d]{2})/gi,
-    /\$\s*([\d,]+\.[\d]{2})\s*(?:total|paid|due|payable)/gi,
+  // Priority 1: explicit "total inc gst" / "payment tender" / "amount paid" patterns
+  // These are the most reliable for what was actually charged
+  const priority=[
+    /(?:total\s+\(inc\.?\s*gst\)|total\s+inc\.?\s*gst|total\s+amount\s+\(aud\))[^\d$\n]{0,10}\$?\s*([\d,]+\.[\d]{2})/gi,
+    /(?:payment\s+tender|amount\s+paid|you\s+paid|charged|debit\s+card|visa|mastercard|eftpos)[^\d$\n]{0,20}\$?\s*([\d,]+\.[\d]{2})/gi,
+    /(?:total\s+amount\s+payable|total\s+amount\s+due|total\s+paid|total\s+due|grand\s+total|amount\s+payable)[^\d$\n]{0,20}\$?\s*([\d,]+\.[\d]{2})/gi,
+    /(?:total|amount)[^\d$\n]{0,20}\$?\s*([\d,]+\.[\d]{2})/gi,
+    /\$?\s*([\d,]+\.[\d]{2})\s*(?:total|paid|due|payable)/gi,
   ];
+
+  // Try priority patterns in order — return first hit
+  for(const pat of priority.slice(0,3)){
+    const re=new RegExp(pat.source,pat.flags);
+    const m=re.exec(text);
+    if(m){
+      const val=parseFloat(m[1].replace(/,/g,''));
+      if(val>0.50&&val<50000)return val;
+    }
+  }
+
+  // Fall back to frequency analysis with remaining patterns
   const amounts=[];
-  for(const pat of patterns){
+  for(const pat of priority.slice(3)){
     let m;const re=new RegExp(pat.source,pat.flags);
     while((m=re.exec(text))!==null){
       const val=parseFloat(m[1].replace(/,/g,''));
@@ -2388,29 +2410,65 @@ function expandYear(yy){const y=parseInt(yy);return y<50?2000+y:1900+y;}
 function extractDateFromText(text){
   const months={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,
     january:1,february:2,march:3,april:4,june:6,july:7,august:8,september:9,october:10,november:11,december:12};
-  const patterns=[
-    // DD Month YYYY — e.g. "17 May 2026"
-    /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{4})/i,
+
+  function tryParse(str){
+    if(!str)return null;
+    const s=str.trim();
+    let m;
     // DD/MM/YYYY or DD-MM-YYYY
-    /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/,
-    // YYYY-MM-DD (ISO)
-    /(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/,
+    if((m=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/)))return new Date(+m[3],+m[2]-1,+m[1]);
+    // YYYY/MM/DD or YYYY-MM-DD
+    if((m=s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/)))return new Date(+m[1],+m[2]-1,+m[3]);
+    // DD/MM/YY
+    if((m=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2})$/)))return new Date(expandYear(m[3]),+m[2]-1,+m[1]);
+    // DD Month YYYY — with optional ordinal suffix (1st, 2nd, 3rd, 15th)
+    if((m=s.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([\w]+)\s+(\d{4})$/i))){
+      const mo=months[m[2].toLowerCase()];if(mo)return new Date(+m[3],mo-1,+m[1]);
+    }
     // Month DD, YYYY
-    /(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2}),?\s+(\d{4})/i,
-    // DD/MM/YY — 2-digit year (printed receipts like EB Games "03/05/26")
-    /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})(?!\d)/,
+    if((m=s.match(/^([\w]+)\s+(\d{1,2}),?\s+(\d{4})$/i))){
+      const mo=months[m[1].toLowerCase()];if(mo)return new Date(+m[3],mo-1,+m[2]);
+    }
+    return null;
+  }
+
+  // Priority: look for dates near payment/order/invoice keywords first
+  // This picks order date over release/estimated dates (EB Games click & collect)
+  const labeledPatterns=[
+    /(?:date|invoice\s*date|order\s*date|payment\s*date|transaction\s*date|purchased?)[:\s]+([^\n\r]{4,30})/gi,
   ];
-  for(let pi=0;pi<patterns.length;pi++){
-    const m=text.match(patterns[pi]);
-    if(m){
-      if(pi===0){const mo=months[m[2].toLowerCase()];if(mo)return new Date(+m[3],mo-1,+m[1]);}
-      else if(pi===1){return new Date(+m[3],+m[2]-1,+m[1]);}
-      else if(pi===2){return new Date(+m[1],+m[2]-1,+m[3]);}
-      else if(pi===3){const mo=months[m[1].toLowerCase()];if(mo)return new Date(+m[3],mo-1,+m[2]);}
-      else if(pi===4){return new Date(expandYear(m[3]),+m[2]-1,+m[1]);}
+  for(const pat of labeledPatterns){
+    const re=new RegExp(pat.source,pat.flags);
+    let m;
+    while((m=re.exec(text))!==null){
+      const d=tryParse(m[1].trim());
+      if(d&&d.getFullYear()>=2020&&d.getFullYear()<=2027)return d;
     }
   }
-  return null;
+
+  // Fall back: scan all date-like strings and return the earliest plausible one
+  // (order dates come before release dates in documents)
+  const datePatterns=[
+    /(\d{1,2}(?:st|nd|rd|th)?\s+(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+\d{4})/gi,
+    /(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4})/g,
+    /(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})/g,
+    /(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2})(?!\d)/g,
+    /((?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2},?\s+\d{4})/gi,
+  ];
+
+  const found=[];
+  for(const pat of datePatterns){
+    const re=new RegExp(pat.source,pat.flags);
+    let m;
+    while((m=re.exec(text))!==null){
+      const d=tryParse(m[1]);
+      if(d&&d.getFullYear()>=2020&&d.getFullYear()<=2027)found.push(d);
+    }
+  }
+  if(!found.length)return null;
+  // Return earliest date — order/invoice dates come before release/estimated dates
+  found.sort((a,b)=>a-b);
+  return found[0];
 }
 
 // ── Merchant name extraction from receipt filename / text ─────────────────────
