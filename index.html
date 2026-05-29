@@ -2352,7 +2352,12 @@ async function extractPdfText(dataUrl,filename=''){
   const amt=extractAmount(rawText);
   const dt=extractDateFromText(rawText);
   dbg('fast path result',{filename,amount:amt,date:dt?dateToStr(dt):null});
-  if(amt||dt){dbg('fast path succeeded',{filename});return rawText;}
+  // Require BOTH amount and date for confidence. The raw paren-stream extractor
+  // is selective and may surface only a release/delivery date (a future date)
+  // while missing the order date in differently-structured content streams.
+  // Falling through to PDF.js gives us the full document text where labels
+  // ("Placed on", "Invoice date") sit next to their dates.
+  if(amt&&dt){dbg('fast path succeeded',{filename});return rawText;}
 
   // FALLBACK: load PDF.js for scanned or complex PDFs
   dbg('fast path failed — falling back to PDF.js',{filename});
@@ -2481,22 +2486,25 @@ function extractDateFromText(text){
     return null;
   }
 
-  // Priority: look for dates near payment/order/invoice keywords first
-  // This picks order date over release/estimated dates (EB Games click & collect)
+  // Priority: look for dates near payment/order/invoice keywords first.
+  // Includes JB Hi-Fi's "Placed on", general "Ordered on" / "Purchased on" so
+  // pre-order PDFs return the order date directly instead of getting trapped
+  // by the future release date in the fallback scan.
   const labeledPatterns=[
-    /(?:date|invoice\s*date|order\s*date|payment\s*date|transaction\s*date|purchased?)[:\s]+([^\n\r]{4,30})/gi,
+    /(?:invoice\s*date|order\s*date|payment\s*date|transaction\s*date|order\s*placed)[:\s]+([^\n\r]{4,30})/gi,
+    /(?:placed|ordered|purchased)\s+(?:on|date)[:\s]+([^\n\r]{4,30})/gi,
+    /\bdate[:\s]+([^\n\r]{4,30})/gi,
   ];
   for(const pat of labeledPatterns){
     const re=new RegExp(pat.source,pat.flags);
     let m;
     while((m=re.exec(text))!==null){
       const d=tryParse(m[1].trim());
-      if(d&&d.getFullYear()>=2020&&d.getFullYear()<=2027)return d;
+      if(d&&d.getFullYear()>=2020&&d.getFullYear()<=2030)return d;
     }
   }
 
-  // Fall back: scan all date-like strings and return the earliest plausible one
-  // (order dates come before release dates in documents)
+  // Fall back: scan all date-like strings
   const datePatterns=[
     /(\d{1,2}(?:st|nd|rd|th)?\s+(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+\d{4})/gi,
     /(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4})/g,
@@ -2511,13 +2519,21 @@ function extractDateFromText(text){
     let m;
     while((m=re.exec(text))!==null){
       const d=tryParse(m[1]);
-      if(d&&d.getFullYear()>=2020&&d.getFullYear()<=2027)found.push(d);
+      if(d&&d.getFullYear()>=2020&&d.getFullYear()<=2030)found.push(d);
     }
   }
   if(!found.length)return null;
-  // Return earliest date — order/invoice dates come before release/estimated dates
-  found.sort((a,b)=>a-b);
-  return found[0];
+  // Prefer past/today over future dates: a receipt's transaction date is in
+  // the past, while release/delivery dates sit in the future. Among past
+  // candidates pick the earliest (the order/invoice date appears before any
+  // footer generation timestamp). If everything is in the future (subscription
+  // invoice for an upcoming period), pick the earliest future date.
+  const today=new Date();
+  today.setHours(23,59,59,999); // include today as "past"
+  const past=found.filter(d=>d<=today);
+  const pool=past.length?past:found;
+  pool.sort((a,b)=>a-b);
+  return pool[0];
 }
 
 // ── Merchant name extraction from receipt filename / text ─────────────────────
@@ -2650,16 +2666,52 @@ function matchAllItems(){
       dbg('Phase1 skipped — missing amount or date',{name:item.name,amount:item.parsedAmount,date:item.parsedDate});
     }
 
-    // Phase 2: name-only match (always runs when Phase 1 finds nothing)
+    // Phase 2: name match, enhanced with soft date/amount scoring.
+    // When Phase 1 misses (bank amount ≠ receipt total due to shipping, or
+    // settlement date lags the order date), Phase 2 can still auto-match if
+    // name + date + amount point clearly at one candidate.
     if(item.merchantHint&&item.merchantHint.length>1){
-      const ns=available.map(r=>({r,score:merchantSimilarity(item.merchantHint,r.description)}))
-        .filter(s=>s.score>=0.4).sort((a,b)=>b.score-a.score);
-      dbg('Phase2',{name:item.name,hint:item.merchantHint,count:ns.length,top:ns[0]?{score:ns[0].score,tx:cleanMerchant(ns[0].r.description)}:null});
+      const hasAmt=item.parsedAmount!==null&&item.parsedAmount>0;
+      const hasDt=item.parsedDate instanceof Date;
+      const ns=available.map(r=>{
+        const nameScore=merchantSimilarity(item.merchantHint,r.description);
+        // Soft date proximity: 1.0 = same day, tapers to 0 at ±30 days
+        let dateProx=0;
+        if(hasDt&&r.date instanceof Date){
+          const dayDiff=Math.abs(r.date.getTime()-item.parsedDate.getTime())/86400000;
+          dateProx=Math.max(0,1-dayDiff/30);
+        }
+        // Soft amount proximity: 1.0 = exact, tapers to 0 at ±50% difference
+        let amtProx=0;
+        if(hasAmt){
+          const pctDiff=Math.abs(r.amount-item.parsedAmount)/Math.max(item.parsedAmount,1);
+          amtProx=Math.max(0,1-pctDiff/0.5);
+        }
+        // Composite: name is the qualifying gate, date+amount break ties.
+        // Weight date+amount equally so a receipt with only one signal can
+        // still rank (e.g. the pre-order with no amount but a good date).
+        const composite=nameScore+dateProx*0.4+amtProx*0.4;
+        return{r,score:nameScore,composite,dateProx,amtProx};
+      })
+      .filter(s=>s.score>=0.4)
+      .sort((a,b)=>b.composite-a.composite);
+      dbg('Phase2',{name:item.name,hint:item.merchantHint,count:ns.length,
+        top:ns[0]?{score:ns[0].score,comp:+ns[0].composite.toFixed(2),datP:+ns[0].dateProx.toFixed(2),amtP:+ns[0].amtProx.toFixed(2),tx:cleanMerchant(ns[0].r.description)}:null,
+        second:ns[1]?{comp:+ns[1].composite.toFixed(2)}:null});
       if(ns.length>0){
         item.matchedIds=ns.map(s=>s.r.id);
         item.nameOnlyMatch=true;
-        item.assignedId=ns[0].r.id;
-        item.status=ns.length===1?'matched':'ambiguous';
+        const taken=new Set(bulkItems.filter(i=>i!==item&&i.assignedId).map(i=>i.assignedId));
+        const free=ns.filter(s=>!taken.has(s.r.id));
+        const pick=free.length?free[0]:ns[0];
+        item.assignedId=pick.r.id;
+        // Auto-match if: (a) only 1 candidate, or (b) top is clearly ahead of #2
+        // (gap ≥ 0.25 means at least one strong date/amount signal), or (c) top has
+        // both date AND amount very close (dateProx ≥ 0.8 AND amtProx ≥ 0.8).
+        const runner=(free.length>=2)?free[1]:ns[1];
+        const gap=runner?pick.composite-runner.composite:1;
+        const strongBoth=pick.dateProx>=0.8&&pick.amtProx>=0.8;
+        item.status=(ns.length===1||gap>=0.25||strongBoth)?'matched':'ambiguous';
         return;
       }
     }
