@@ -618,7 +618,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
 
     <!-- Toolbar -->
     <div class="toolbar">
-      <input type="text" id="search-input" placeholder="Search description or notes…" oninput="onSearchInput()">
+      <input type="text" id="search-input" placeholder="Search name, amount, category, notes…" oninput="onSearchInput()">
       <div class="t-sep"></div>
       <select id="period-filter" onchange="onPeriodChange()">
         <option value="all">All dates</option>
@@ -867,10 +867,15 @@ function onSearchInput(){
   clearTimeout(_searchTimer);
   _searchTimer=setTimeout(()=>renderTable(),180);
 }
-function toast(msg,dur=2800){
+function toast(msg,dur=2800,action=null){
   const e=document.getElementById('toast');
   if(_toastTimer)clearTimeout(_toastTimer);
-  e.textContent=msg;e.classList.add('show');
+  if(action){
+    e.innerHTML=`<span>${msg}</span> <button onclick="(${action.fn.toString()})();document.getElementById('toast').classList.remove('show')" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.4);font-family:var(--sans);font-size:12px;font-weight:600;padding:4px 12px;border-radius:14px;cursor:pointer;margin-left:10px;white-space:nowrap">${action.label}</button>`;
+  } else {
+    e.textContent=msg;
+  }
+  e.classList.add('show');
   _toastTimer=setTimeout(()=>{e.classList.remove('show');_toastTimer=null;},dur);
 }
 function fmtDate(d){
@@ -1219,15 +1224,25 @@ function inRange(r,range){
 
 // ── Filter ────────────────────────────────────────────────────────────────────
 function getFiltered(){
-  const q=(document.getElementById('search-input')?.value||'').toLowerCase();
+  const q=(document.getElementById('search-input')?.value||'').toLowerCase().trim();
   const cat=document.getElementById('cat-filter')?.value||'';
   const typ=document.getElementById('type-filter')?.value||'';
   const bp=document.getElementById('bp-filter')?.value||'';
   const rcpt=document.getElementById('receipt-filter')?.value||'';
   const range=getDateRange();
+  // Pre-strip $ sign from query for amount matching
+  const qNum=q.replace(/^\$\s*/,'');
+  const isNumQ=qNum.length>0&&/^[\d.,]+$/.test(qNum);
   return allRows.filter(r=>{
     if(showDupsOnly&&!r.isDup)return false;
-    if(q&&!r.description.toLowerCase().includes(q)&&!(r.notes||'').toLowerCase().includes(q))return false;
+    if(q){
+      const inDesc=r.description.toLowerCase().includes(q);
+      const inNotes=(r.notes||'').toLowerCase().includes(q);
+      const inClean=cleanMerchant(r.description).toLowerCase().includes(q);
+      const inCat=(r.category||'').toLowerCase().includes(q);
+      const inAmt=isNumQ&&r.amount.toFixed(2).includes(qNum);
+      if(!inDesc&&!inNotes&&!inClean&&!inCat&&!inAmt)return false;
+    }
     if(cat==='__none__'&&r.category!=='')return false;
     if(cat&&cat!=='__none__'&&r.category!==cat)return false;
     if(typ==='debit'&&!r.isDebit)return false;
@@ -1451,7 +1466,114 @@ function renderTable(){
 
 // ── Row setters ───────────────────────────────────────────────────────────────
 function setBP(id,val){const r=allRows.find(r=>r.id===id);if(!r)return;r.bpType=val;updateKPIs();renderTable();renderBAS();scheduleDriveSave();}
-function setCat(id,val){const r=allRows.find(r=>r.id===id);if(r){r.category=val;r.autoCat=false;}updateKPIs();scheduleDriveSave();}
+let _lastCatUndo=null;
+function setCat(id,val){
+  const r=allRows.find(r=>r.id===id);
+  if(!r)return;
+  const prevCat=r.category;
+  r.category=val;r.autoCat=false;
+  // Auto-propagate: when a user categorizes one merchant, apply the same
+  // category to all OTHER uncategorized business debits from that merchant.
+  // This mirrors how Xero/MYOB work — categorize once, applies everywhere.
+  if(val&&r.isDebit&&r.bpType==='business'){
+    const merchant=cleanMerchant(r.description);
+    if(merchant.length>=3){
+      const siblings=allRows.filter(s=>
+        s.id!==id&&s.isDebit&&s.bpType==='business'&&!s.category
+        &&cleanMerchant(s.description)===merchant);
+      if(siblings.length>0){
+        // Capture undo snapshot BEFORE applying changes
+        const undoData=siblings.map(s=>({id:s.id,prevCat:s.category}));
+        siblings.forEach(s=>{s.category=val;s.autoCat=true;});
+        // Learn rule (returns undo info)
+        const ruleUndo=learnRule(r.description,val);
+        // Store full undo state
+        _lastCatUndo={mainId:id,prevCat,siblings:undoData,ruleUndo,merchant};
+        renderTable();
+        toast(
+          `✓ Applied "${val}" to ${siblings.length+1} ${merchant} transactions`,
+          6000,
+          {label:'Undo',fn:()=>{undoLastCatPropagation();}}
+        );
+      } else {
+        learnRule(r.description,val);
+      }
+    }
+  }
+  updateKPIs();scheduleDriveSave();
+}
+
+function undoLastCatPropagation(){
+  const u=_lastCatUndo;if(!u)return;
+  // Revert main row
+  const main=allRows.find(r=>r.id===u.mainId);
+  if(main){main.category=u.prevCat;main.autoCat=false;}
+  // Revert siblings
+  u.siblings.forEach(s=>{
+    const row=allRows.find(r=>r.id===s.id);
+    if(row){row.category=s.prevCat;row.autoCat=false;}
+  });
+  // Undo rule change
+  if(u.ruleUndo){
+    if(u.ruleUndo.type==='added'){
+      // Remove the rule that was added
+      const idx=rules.findIndex(r=>r.kw===u.ruleUndo.kw&&r.cat===u.ruleUndo.cat);
+      if(idx>=0)rules.splice(idx,1);
+    } else if(u.ruleUndo.type==='updated'){
+      // Revert the rule to its previous category
+      const rule=rules.find(r=>r.kw===u.ruleUndo.kw);
+      if(rule)rule.cat=u.ruleUndo.prevCat;
+    }
+  }
+  _lastCatUndo=null;
+  updateKPIs();renderTable();scheduleDriveSave();
+  toast(`↩ Undone — ${u.merchant} reverted`);
+}
+
+// Extract a keyword from a raw description and add it as a rule if none
+// already covers this merchant. Keeps keywords short and location-free
+// so "jb hi-fi" matches future JB Hi-Fi purchases at any store.
+// Returns undo info: {type:'added'|'updated', kw, cat, prevCat?} or null
+const LOCATION_WORDS=new Set([
+  'sydney','melbourne','brisbane','perth','adelaide','canberra','hobart','darwin',
+  'hawthorn','southbank','richmond','carlton','fitzroy','prahran','collingwood',
+  'parramatta','chatswood','bondi','surry','hills','newtown','manly',
+  'fortitude','valley','woolloongabba','carindale','indooroopilly','chermside',
+  'subiaco','fremantle','joondalup','morley',
+  'north','south','east','west','central','city','park','point','bay','hill',
+  'nsw','vic','qld','wa','sa','act','tas','nt','au','aus',
+]);
+function learnRule(rawDesc,category){
+  const desc=rawDesc.toLowerCase();
+  // If any existing rule already matches this description, skip (or update if different category)
+  for(const rule of rules){
+    if(desc.includes(rule.kw.toLowerCase())){
+      if(rule.cat!==category){
+        const prevCat=rule.cat;
+        rule.cat=category;
+        return{type:'updated',kw:rule.kw,cat:category,prevCat};
+      }
+      return null; // rule already correct, no change
+    }
+  }
+  // Extract keyword: clean the name, split, drop generic/location words, take first 2
+  const cleaned=cleanMerchant(rawDesc).toLowerCase();
+  const words=cleaned.split(/\s+/).filter(w=>
+    w.length>1&&!GENERIC_WORDS.has(w)&&!LOCATION_WORDS.has(w));
+  if(!words.length)return null;
+  // Try 2-word keyword first (more specific), fall back to 1-word if the
+  // 2-word form doesn't appear contiguously in the raw description
+  // (e.g. "KMART 5678 CAIRNS" → "kmart cairns" fails, "kmart" succeeds)
+  for(let len=Math.min(words.length,2);len>=1;len--){
+    const kw=words.slice(0,len).join(' ');
+    if(kw.length>=2&&desc.includes(kw)){
+      rules.push({kw,cat:category});
+      dbg('learned rule',{kw,category});
+      return{type:'added',kw,cat:category};
+    }
+  }
+  return null;
+}
 function setNote(id,val){
   const r=allRows.find(r=>r.id===id);
   if(r)r.notes=val;
@@ -2014,11 +2136,13 @@ function loadSession(file){
 // ── Export CSV ────────────────────────────────────────────────────────────────
 function exportCSV(){
   const rows=getExportRows();
-  const lines=[['Date','Description','Amount','Type','B/P','GST Included','GST Amount','Net (ex GST)','Category','Receipt','Notes'].join(',')];
+  const useClean=document.getElementById('merchant-cleanup')?.checked;
+  const lines=[['Date','Description','Original Description','Amount','Type','B/P','GST Included','GST Amount','Net (ex GST)','Category','Receipt','Notes'].join(',')];
   rows.forEach(r=>{
     const biz=r.bpType==='business';
     const net=r.isDebit&&biz?(r.amount-r.gstAmt).toFixed(2):r.amount.toFixed(2);
-    lines.push([fmtDate(r.date),`"${r.description.replace(/"/g,'""')}"`,r.amount.toFixed(2),
+    const dispName=useClean?cleanMerchant(r.description):r.description;
+    lines.push([fmtDate(r.date),`"${dispName.replace(/"/g,'""')}"`,`"${r.description.replace(/"/g,'""')}"`,r.amount.toFixed(2),
       r.isDebit?'Debit':'Credit',biz?'Business':'Personal',
       r.isDebit?r.gstIncluded:'N/A',r.isDebit&&biz?r.gstAmt.toFixed(2):'0.00',
       net,`"${r.category}"`,r.receiptFile?`"Yes — ${r.receiptFile.name.replace(/"/g,'""')}"`:r.receipt,`"${(r.notes||'').replace(/"/g,'""')}"`].join(','));
@@ -2040,12 +2164,15 @@ function exportExcel(){
   const tealH={font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10},fill:{fgColor:{rgb:'007B8A'}},alignment:{horizontal:'center'}};
 
   // Transactions
-  const txH=['Date','Description','Amount','Type','B/P','GST Inc.','GST Amt','Net (ex GST)','Category','Receipt','Notes'];
+  const useClean=document.getElementById('merchant-cleanup')?.checked;
+  const txH=['Date','Description','Original Description','Amount','Type','B/P','GST Inc.','GST Amt','Net (ex GST)','Category','Receipt','Notes'];
   const txD=[txH];
   visibleRows.forEach(r=>{
     const biz=r.bpType==='business';
     const net=r.isDebit&&biz?+(r.amount-r.gstAmt).toFixed(2):+r.amount.toFixed(2);
-    txD.push([fmtDate(r.date),r.description+(r.isDup?' [DUP?]':''),r.isDebit?+r.amount.toFixed(2):0,
+    const dispName=useClean?cleanMerchant(r.description):r.description;
+    txD.push([fmtDate(r.date),dispName+(r.isDup?' [DUP?]':''),r.description,
+      +r.amount.toFixed(2),
       r.isDebit?'Debit':'Credit',biz?'Business':'Personal',
       r.isDebit?(r.gstIncluded==='yes'?'Yes':'No'):'N/A',
       r.isDebit&&biz?+r.gstAmt.toFixed(2):0,net,
@@ -2053,10 +2180,13 @@ function exportExcel(){
   });
   const tA=+bizRows.filter(r=>r.isDebit).reduce((s,r)=>s+r.amount,0).toFixed(2);
   const tG=+bizRows.filter(r=>r.isDebit&&r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);
-  txD.push(['BUSINESS TOTAL','',tA,'','','',tG,+(tA-tG).toFixed(2),'','','']);
+  const tCredits=+visibleRows.filter(r=>!r.isDebit).reduce((s,r)=>s+r.amount,0).toFixed(2);
+  txD.push(['BUSINESS DEBITS','','',tA,'','','',tG,+(tA-tG).toFixed(2),'','','']);
+  if(tCredits>0)txD.push(['CREDITS / INCOME','','',tCredits,'','','','','','','','']);
+  txD.push(['NET','','',+(tA-tCredits).toFixed(2),'','','','','','','','']);
   const txWs=XLSX.utils.aoa_to_sheet(txD);
-  txWs['!cols']=[{wch:13},{wch:44},{wch:12},{wch:10},{wch:10},{wch:10},{wch:11},{wch:14},{wch:24},{wch:16},{wch:28}];
-  ['A','B','C','D','E','F','G','H','I','J','K'].forEach(c=>{if(txWs[c+'1'])txWs[c+'1'].s=hS;});
+  txWs['!cols']=[{wch:13},{wch:36},{wch:44},{wch:12},{wch:10},{wch:10},{wch:10},{wch:11},{wch:14},{wch:24},{wch:16},{wch:28}];
+  ['A','B','C','D','E','F','G','H','I','J','K','L'].forEach(c=>{if(txWs[c+'1'])txWs[c+'1'].s=hS;});
   XLSX.utils.book_append_sheet(wb,txWs,'Transactions');
 
   // BAS
@@ -3099,25 +3229,62 @@ function renderChart(){
 const MERCHANT_PREFIXES=[
   /^VISA\s+DEBIT\s+PURCHASE\s+CARD\s*\d*\s*/i,
   /^VISA\s+CREDIT\s+PURCHASE\s+CARD\s*\d*\s*/i,
-  /^EFTPOS\s+PURCHASE\s*/i,
+  /^VISA\s+PURCHASE\s+CARD\s*\d*\s*/i,
+  /^EFTPOS\s+(?:PURCHASE|DEBIT)\s*/i,
   /^MASTERCARD\s+PURCHASE\s*\d*\s*/i,
   /^DIRECT\s+DEBIT\s+/i,
   /^BPAY\s+/i,
   /^ATM\s+WITHDRAWAL\s*/i,
-  /^INTERNET\s+BANKING\s+/i,
-  /^ANZ\s+INTERNET\s+BANKING\s*/i,
+  /^(?:ANZ\s+)?INTERNET\s+BANKING\s*/i,
+  /^BANK\s+TRANSFER\s*/i,
+  // Payment processor prefixes
+  /^SP\s+/i,              // Square
+  /^SQ\s*\*\s*/i,          // Square variant
+  /^PP\s*\*\s*/i,          // PayPal
+  /^CRV\s*\*\s*/i,         // Curve
+  /^GOOGLE\s*\*\s*/i,      // Google
+  /^AMZN\s*\*?\s*/i,       // Amazon
+  /^APPLE\.COM\/BILL\s*/i, // Apple
+  /^WWW\.\s*/i,            // Website prefix
+  /^PAYPAL\s*\*?\s*/i,     // PayPal long form
 ];
 const LOCATION_SUFFIXES=[
-  /\s+(SYDNEY|MELBOURNE|BRISBANE|PERTH|ADELAIDE|CANBERRA|HOBART|DARWIN|NSW|VIC|QLD|WA|SA|ACT|TAS|NT)\s*$/i,
-  /\s+AU\s*$/i,
+  /\s+(SYDNEY|MELBOURNE|BRISBANE|PERTH|ADELAIDE|CANBERRA|HOBART|DARWIN|GOLD COAST|CAIRNS|TOWNSVILLE|NEWCASTLE|WOLLONGONG|GEELONG|BALLARAT|BENDIGO|TOOWOOMBA|NSW|VIC|QLD|WA|SA|ACT|TAS|NT)\s*$/i,
+  /\s+AU[S]?\s*$/i,
+];
+const TRAILING_NOISE=[
+  /\s+\d{7,}\s*$/,               // phone numbers (7+ digits)
+  /\s+\d{3,5}\s*$/,              // short codes / terminal IDs
+  /\s+[A-Z]{2}\d{5,}\s*$/,       // reference codes like AU12345
+  /\s+PTY\s*(?:LTD)?\s*$/i,      // PTY LTD
+  /\s+LTD\s*$/i,                 // LTD
+  /\s+CARD\s*\d+\s*$/i,          // trailing CARD 1234
 ];
 function cleanMerchant(desc){
   let s=desc;
   for(const re of MERCHANT_PREFIXES)s=s.replace(re,'');
-  for(const re of LOCATION_SUFFIXES)s=s.replace(re,'');
-  // Trim trailing location words like "HAWTHORN", "SOUTHBANK" (all-caps single words at end)
-  s=s.replace(/\s+[A-Z]{4,}\s*$/,'').trim();
-  return s||desc;
+  // Strip inline digit-only tokens (store IDs, terminal codes, phone numbers)
+  s=s.replace(/\s+\d{3,}(?=\s|$)/g,'');
+  // Strip trailing noise + location suffixes, loop since they can chain
+  // e.g. "MERCHANT 0738607777 BRISBANE" → phone first, then city
+  for(let i=0;i<3;i++){
+    for(const re of TRAILING_NOISE)s=s.replace(re,'');
+    for(const re of LOCATION_SUFFIXES)s=s.replace(re,'');
+  }
+  s=s.trim();
+  if(!s)return desc;
+  // Smart title-case: words ≤3 chars stay UPPER (likely acronyms: JB, EB, ANZ),
+  // words ≥4 chars get Title Case (AUSTRALIA → Australia, GAMES → Games).
+  // Handles hyphenated words per-segment (HI-FI → HI-FI since both parts ≤3).
+  s=s.replace(/\S+/g,word=>{
+    // If the word contains a dot or slash, it's likely a URL/code — leave as-is
+    if(/[.\/]/.test(word))return word;
+    return word.split('-').map(part=>{
+      if(part.length<=3)return part.toUpperCase();
+      return part.charAt(0).toUpperCase()+part.slice(1).toLowerCase();
+    }).join('-');
+  });
+  return s;
 }
 function getDisplayDesc(r){
   const cleanup=document.getElementById('merchant-cleanup');
@@ -3455,6 +3622,29 @@ function initDarkMode(){
     }
   }catch(e){}
 }
+
+// ── Save guard: flush pending edits on tab close / switch ─────────────────────
+// Desktop: beforeunload fires on tab close / navigate away. Shows a
+// confirmation dialog ONLY when there's an unsaved edit in flight, giving
+// the async Drive save time to land.
+window.addEventListener('beforeunload',e=>{
+  if(_driveSaveDebounce&&driveToken){
+    clearTimeout(_driveSaveDebounce);
+    _driveSaveDebounce=null;
+    driveSaveSession(); // fire async — the dialog gives it time to complete
+    e.preventDefault();
+    e.returnValue='';   // triggers "Changes may not be saved" prompt
+  }
+});
+// Mobile: visibilitychange fires when the user swipes away or locks the
+// phone — beforeunload is unreliable on mobile Safari / Chrome.
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden&&_driveSaveDebounce&&driveToken){
+    clearTimeout(_driveSaveDebounce);
+    _driveSaveDebounce=null;
+    driveSaveSession();
+  }
+});
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 initDarkMode();
