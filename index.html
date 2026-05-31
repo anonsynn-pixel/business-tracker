@@ -1618,7 +1618,7 @@ function renderTable(){
     const bpCell=`<td><div class="bp-toggle"><button class="bp-btn ${!isP(r)?'act-b':''}" onclick="setBP('${r.id}','business')">B</button><button class="bp-btn ${isP(r)?'act-p':''}" onclick="setBP('${r.id}','personal')">P</button></div></td>`;
     const gstCell=`<td><select class="gst-sel" onchange="setGST('${r.id}',this.value)" ${isP(r)?'disabled':''}><option value="yes" ${r.gstIncluded==='yes'?'selected':''}>Yes</option><option value="no" ${r.gstIncluded==='no'?'selected':''}>No</option></select></td>`;
     const gstAmt=r.gstIncluded==='yes'&&!isP(r)?`<td class="td-amount" style="color:var(--gold)">${fmtAUD(r.gstAmt)}</td>`:`<td class="td-mono" style="color:#ccc">—</td>`;
-    const isStripped=r.receiptFile&&(r.receiptFile.stripped||!r.receiptFile.data);
+    const isStripped=r.receiptFile&&(r.receiptFile.stripped||(!r.receiptFile.data&&!r.receiptFile.driveFileId));
     const rcpt=r.receiptFile?`<div class="rcpt-cell"><div class="rcpt-badge ${isStripped?'rcpt-badge-stripped':''}" onclick="viewReceipt('${r.id}')" title="${isStripped?'File data missing — tap Replace to re-attach':r.receiptFile.name}"><span>${esc(r.receiptFile.name)}</span></div>${isStripped?`<button class="rcpt-btn" style="color:var(--orange);border-color:var(--orange)" onclick="document.getElementById('rf_${r.id}').click()" title="Re-attach file to restore preview">↻ Replace</button>`:`<span class="rcpt-remove" onclick="removeReceipt('${r.id}')">✕</span>`}<input type="file" id="rf_${r.id}" accept="image/*,.pdf" style="display:none" onchange="attachReceipt('${r.id}',this)"></div>`:`<div class="rcpt-cell"><button class="rcpt-btn" onclick="document.getElementById('rf_${r.id}').click()">+ Attach</button><input type="file" id="rf_${r.id}" accept="image/*,.pdf" style="display:none" onchange="attachReceipt('${r.id}',this)"></div>`;
     const descExtra=(r.isDup?` <span class="dup-flag">⚠ dup</span>`:'')+(r.autoCat?` <span class="autocat-flag">✦ auto</span>`:'');
     const{main:dispMain,sub:dispSub}=getDisplayDesc(r);
@@ -1648,7 +1648,7 @@ function renderTable(){
       <div class="m-fields">
         <div class="m-field" style="grid-column:1/-1"><label>Business / Personal</label><div class="bp-toggle m-bp"><button class="bp-btn ${!isP(r)?'act-b':''}" onclick="setBP('${r.id}','business')">Business</button><button class="bp-btn ${isP(r)?'act-p':''}" onclick="setBP('${r.id}','personal')">Personal</button></div></div>
         <div class="m-field"><label>Category</label><select onchange="setCat('${r.id}',this.value)" ${isP(r)?'disabled':''}><option value="">— Select —</option>${co2}</select></div>
-        <div class="m-field"><label>Receipt</label>${r.receiptFile?(()=>{const stripped=r.receiptFile.stripped||!r.receiptFile.data;return`<div style="display:flex;flex-direction:column;gap:4px"><div class="rcpt-badge ${stripped?'rcpt-badge-stripped':''}" onclick="viewReceipt('${r.id}')"><span>${esc(r.receiptFile.name)}</span></div><div style="display:flex;gap:6px"><button class="rcpt-btn" style="${stripped?'color:var(--orange);border-color:var(--orange);':''}flex:1" onclick="document.getElementById('rfm_${r.id}').click()">${stripped?'↻ Replace file':'↻ Replace'}</button><button class="rcpt-btn" style="color:var(--red);border-color:var(--red)" onclick="removeReceipt('${r.id}')">✕ Remove</button></div><input type="file" id="rfm_${r.id}" accept="image/*,.pdf" style="display:none" onchange="attachReceipt('${r.id}',this)"></div>`;})():`<button class="rcpt-btn" onclick="document.getElementById('rfm_${r.id}').click()">+ Attach</button><input type="file" id="rfm_${r.id}" accept="image/*,.pdf" style="display:none" onchange="attachReceipt('${r.id}',this)">`}</div>
+        <div class="m-field"><label>Receipt</label>${r.receiptFile?(()=>{const stripped=r.receiptFile.stripped||(!r.receiptFile.data&&!r.receiptFile.driveFileId);return`<div style="display:flex;flex-direction:column;gap:4px"><div class="rcpt-badge ${stripped?'rcpt-badge-stripped':''}" onclick="viewReceipt('${r.id}')"><span>${esc(r.receiptFile.name)}</span></div><div style="display:flex;gap:6px"><button class="rcpt-btn" style="${stripped?'color:var(--orange);border-color:var(--orange);':''}flex:1" onclick="document.getElementById('rfm_${r.id}').click()">${stripped?'↻ Replace file':'↻ Replace'}</button><button class="rcpt-btn" style="color:var(--red);border-color:var(--red)" onclick="removeReceipt('${r.id}')">✕ Remove</button></div><input type="file" id="rfm_${r.id}" accept="image/*,.pdf" style="display:none" onchange="attachReceipt('${r.id}',this)"></div>`;})():`<button class="rcpt-btn" onclick="document.getElementById('rfm_${r.id}').click()">+ Attach</button><input type="file" id="rfm_${r.id}" accept="image/*,.pdf" style="display:none" onchange="attachReceipt('${r.id}',this)">`}</div>
         <div class="m-field"><label>GST</label><select class="gst-sel" onchange="setGST('${r.id}',this.value)" ${isP(r)?'disabled':''}><option value="yes" ${r.gstIncluded==='yes'?'selected':''}>Yes</option><option value="no" ${r.gstIncluded==='no'?'selected':''}>No</option></select></div>
         <div class="m-field" style="grid-column:1/-1"><label>Notes</label><input type="text" value="${esc(r.notes||'')}" placeholder="Add note…" oninput="setNote('${r.id}',this.value)"></div>
       </div>
@@ -1892,13 +1892,11 @@ async function compressImage(file,maxKB=200){
       const img=new Image();
       img.onload=()=>{
         const canvas=document.createElement('canvas');
-        // Scale down if very large
         let w=img.width,h=img.height;
         const maxDim=1600;
         if(w>maxDim||h>maxDim){const s=maxDim/Math.max(w,h);w=Math.round(w*s);h=Math.round(h*s);}
         canvas.width=w;canvas.height=h;
         canvas.getContext('2d').drawImage(img,0,0,w,h);
-        // Try quality levels until under maxKB
         let q=0.82;
         const tryCompress=()=>{
           const data=canvas.toDataURL('image/jpeg',q);
@@ -1914,13 +1912,75 @@ async function compressImage(file,maxKB=200){
   });
 }
 
+// Render a PDF's first page to a compressed JPEG preview.
+// Turns a 6MB JB Hi-Fi PDF into a ~150KB image that survives Drive sync.
+async function compressPdfToPreview(dataUrl,maxKB=300){
+  try{
+    // Load PDF.js if not already available
+    if(typeof pdfjsLib==='undefined'){
+      await new Promise((resolve,reject)=>{
+        const s=document.createElement('script');
+        s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        s.onload=resolve;s.onerror=reject;document.head.appendChild(s);
+      });
+      pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+    // Parse the base64 data
+    const raw=atob(dataUrl.split(',')[1]);
+    const arr=new Uint8Array(raw.length);
+    for(let i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
+    const pdf=await pdfjsLib.getDocument({data:arr}).promise;
+    const page=await pdf.getPage(1);
+    // Render at 1.5x scale for readability
+    const vp=page.getViewport({scale:1.5});
+    const canvas=document.createElement('canvas');
+    canvas.width=vp.width;canvas.height=vp.height;
+    await page.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;
+    // Compress to JPEG
+    let q=0.82;
+    let result;
+    do{
+      result=canvas.toDataURL('image/jpeg',q);
+      q-=0.1;
+    }while((result.length*3/4)/1024>maxKB&&q>0.3);
+    dbg('PDF compressed to preview',{kb:Math.round((result.length*3/4)/1024)});
+    return result;
+  }catch(e){
+    dbg('PDF preview compression failed',{error:e.message});
+    return null;
+  }
+}
+
 function attachReceipt(id,input){
   const file=input.files[0];if(!file)return;
-  if(file.size>8*1024*1024){toast('⚠ File too large — max 8 MB');input.value='';return;}
+  if(file.size>15*1024*1024){toast('⚠ File too large — max 15 MB');input.value='';return;}
   const isPdf=file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf');
   input.value='';
-  if(!isPdf&&file.size>200*1024){
-    // Compress image async
+  // Large PDFs (JB Hi-Fi orders with product images = 1-8MB): render page 1 to JPEG preview
+  if(isPdf&&file.size>500*1024){
+    toast('⏳ Compressing PDF preview…');
+    const reader=new FileReader();
+    reader.onload=async e=>{
+      const preview=await compressPdfToPreview(e.target.result,300);
+      const r=allRows.find(r=>r.id===id);
+      if(r){
+        if(preview){
+          r.receiptFile={name:file.name,type:'image/jpeg',data:preview,pdfPreview:true};
+          const origKB=Math.round(file.size/1024);
+          const newKB=Math.round((preview.length*3/4)/1024);
+          toast(`✓ Receipt: ${file.name} (${origKB}KB → ${newKB}KB preview)`);
+        } else {
+          // Fallback: store raw but it may get stripped on sync
+          r.receiptFile={name:file.name,type:file.type,data:e.target.result};
+          toast('✓ Receipt attached: '+file.name);
+        }
+        r.receipt='Yes';
+      }
+      renderTable();
+      if(driveToken)driveSaveSession();
+    };
+    reader.readAsDataURL(file);
+  } else if(!isPdf&&file.size>200*1024){
     toast('⏳ Compressing image…');
     compressImage(file,200).then(compressed=>{
       const r=allRows.find(r=>r.id===id);
@@ -1943,21 +2003,48 @@ function attachReceipt(id,input){
     reader.readAsDataURL(file);
   }
 }
-function removeReceipt(id){const r=allRows.find(r=>r.id===id);if(r){r.receiptFile=null;r.receipt='No';}renderTable();scheduleDriveSave();}
-function viewReceipt(id){
+function removeReceipt(id){
+  const r=allRows.find(r=>r.id===id);
+  if(r&&r.receiptFile){
+    const fid=r.receiptFile.driveFileId;
+    r.receiptFile=null;r.receipt='No';
+    if(fid)driveDeleteReceipt(fid); // async, fire-and-forget
+  }
+  renderTable();scheduleDriveSave();
+}
+async function viewReceipt(id){
   const r=allRows.find(r=>r.id===id);if(!r||!r.receiptFile)return;
   document.getElementById('rcpt-modal-name').textContent=r.receiptFile.name;
   const c=document.getElementById('rcpt-modal-content');
+
+  // If data is missing but driveFileId exists, fetch from Drive
+  if(!r.receiptFile.data&&r.receiptFile.driveFileId&&!r.receiptFile.stripped){
+    c.innerHTML='<p style="color:var(--muted);font-size:13px;padding:1rem 0">⏳ Loading receipt from Drive…</p>';
+    document.getElementById('rcpt-modal').classList.add('open');
+    const data=await driveFetchReceipt(r.receiptFile.driveFileId);
+    if(data){
+      r.receiptFile.data=data; // cache in memory for next view
+      showReceiptContent(r,c);
+    } else {
+      c.innerHTML='<p style="color:var(--red);font-size:13px;padding:1rem 0">⚠ Could not load receipt from Drive. Try reconnecting.</p>';
+    }
+    return;
+  }
   if(!r.receiptFile.data||r.receiptFile.stripped){
     c.innerHTML=`<p style="color:var(--orange);font-size:13px;">⚠ Receipt file too large to store — filename saved only. Use <strong>↻ Replace</strong> to re-attach.</p>`;
-  } else if(r.receiptFile.type&&r.receiptFile.type.startsWith('image/')){
-    c.innerHTML=`<img class="rcpt-modal-img" src="${r.receiptFile.data}">`;
+  } else {
+    showReceiptContent(r,c);
+  }
+  document.getElementById('rcpt-modal').classList.add('open');
+}
+function showReceiptContent(r,c){
+  if(r.receiptFile.type&&r.receiptFile.type.startsWith('image/')){
+    c.innerHTML=`<img class="rcpt-modal-img" src="${r.receiptFile.data}">${r.receiptFile.pdfPreview?'<p style="color:var(--muted);font-size:11px;margin-top:6px;font-family:var(--mono)">📄 Compressed preview of PDF page 1</p>':''}`;
   } else if(r.receiptFile.type==='application/pdf'){
     c.innerHTML=`<iframe class="rcpt-modal-pdf" src="${r.receiptFile.data}"></iframe>`;
   } else {
     c.innerHTML=`<p style="color:var(--muted);font-size:13px;padding:1rem 0">Preview unavailable. <a href="${r.receiptFile.data}" download="${esc(r.receiptFile.name)}" style="color:var(--accent)">Download</a></p>`;
   }
-  document.getElementById('rcpt-modal').classList.add('open');
 }
 function closeModal(){document.getElementById('rcpt-modal').classList.remove('open');document.getElementById('rcpt-modal-content').innerHTML='';}
 
@@ -2194,38 +2281,124 @@ async function refreshDriveTokenIfNeeded(){
   });
 }
 
+// ── Drive Receipt Storage (individual files) ──────────────────────────────────
+// Each receipt is stored as its own file in appDataFolder instead of embedded
+// in the main session JSON. This keeps the session file lightweight (~150KB)
+// and allows receipts up to 5MB each without hitting Drive limits.
+
+async function driveUploadReceipt(rowId,receiptFile){
+  if(!driveToken||!receiptFile||!receiptFile.data)return null;
+  try{
+    const form=new FormData();
+    form.append('metadata',new Blob([JSON.stringify({
+      name:'receipt_'+rowId,
+      parents:['appDataFolder'],
+      properties:{rowId,originalName:receiptFile.name}
+    })],{type:'application/json'}));
+    form.append('file',new Blob([receiptFile.data],{type:'text/plain'}));
+    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{
+      method:'POST',headers:{Authorization:'Bearer '+driveToken},body:form});
+    if(res.status===401){
+      await refreshDriveTokenIfNeeded();
+      const retry=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{
+        method:'POST',headers:{Authorization:'Bearer '+driveToken},body:form});
+      if(!retry.ok)return null;
+      return(await retry.json()).id;
+    }
+    if(!res.ok)return null;
+    const j=await res.json();
+    dbg('receipt uploaded to Drive',{rowId,fileId:j.id,name:receiptFile.name});
+    return j.id;
+  }catch(e){
+    dbg('receipt upload failed',{rowId,error:e.message});
+    return null;
+  }
+}
+
+async function driveFetchReceipt(driveFileId){
+  if(!driveToken||!driveFileId)return null;
+  try{
+    const res=await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,{
+      headers:{Authorization:'Bearer '+driveToken}});
+    if(res.status===401){
+      await refreshDriveTokenIfNeeded();
+      const retry=await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,{
+        headers:{Authorization:'Bearer '+driveToken}});
+      if(!retry.ok)return null;
+      return await retry.text();
+    }
+    if(!res.ok)return null;
+    return await res.text();
+  }catch(e){
+    dbg('receipt fetch failed',{driveFileId,error:e.message});
+    return null;
+  }
+}
+
+async function driveDeleteReceipt(driveFileId){
+  if(!driveToken||!driveFileId)return;
+  try{
+    await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}`,{
+      method:'DELETE',headers:{Authorization:'Bearer '+driveToken}});
+    dbg('receipt deleted from Drive',{driveFileId});
+  }catch(e){
+    dbg('receipt delete failed',{driveFileId,error:e.message});
+  }
+}
+
+// Upload receipts that have data but no driveFileId. Called after attaching
+// receipts and during save. Runs with concurrency limit to avoid hammering the API.
+async function driveUploadPendingReceipts(){
+  if(!driveToken)return;
+  const pending=allRows.filter(r=>
+    r.receiptFile&&r.receiptFile.data&&!r.receiptFile.driveFileId&&!r.receiptFile.stripped);
+  if(!pending.length)return;
+  dbg('uploading pending receipts',{count:pending.length});
+  // Process 3 at a time
+  const CONCURRENCY=3;
+  for(let i=0;i<pending.length;i+=CONCURRENCY){
+    const batch=pending.slice(i,i+CONCURRENCY);
+    await Promise.all(batch.map(async r=>{
+      const fileId=await driveUploadReceipt(r.id,r.receiptFile);
+      if(fileId){r.receiptFile.driveFileId=fileId;}
+    }));
+  }
+}
+
 async function driveSaveSession(){
   if(!driveToken||!allRows.length)return;
-  driveSaving=true; // pause the poll while a save is in flight (prevents reload race)
+  driveSaving=true;
   driveSetStatus('syncing','Saving…');
   try{
-    const savedAt=new Date().toISOString(); // payload timestamp (client clock)
-    let serverModifiedTime=null;            // Drive's own modifiedTime, set from the response
-    let rowsToSave=serializeRows(allRows);
-    let payload=JSON.stringify({version:3,savedAt,sessionName,rules,rows:rowsToSave});
-    // Strip only oversized individual receipts (>1MB each) rather than all receipts
-    // Drive appDataFolder supports up to 25MB — no need to strip aggressively
-    const RECEIPT_MAX=1*1024*1024; // 1MB per receipt in base64
-    rowsToSave=rowsToSave.map(r=>{
-      if(!r.receiptFile||!r.receiptFile.data||r.receiptFile.stripped)return r;
-      if(r.receiptFile.data.length>RECEIPT_MAX){
-        dbg('receipt too large, stripping for Drive',{name:r.receiptFile.name,size:r.receiptFile.data.length});
+    // Upload any receipts that don't have a Drive file yet
+    await driveUploadPendingReceipts();
+
+    const savedAt=new Date().toISOString();
+    let serverModifiedTime=null;
+    // Serialize rows: if a receipt has a driveFileId, exclude the data blob
+    // to keep the main JSON lightweight. If no driveFileId, include data as fallback.
+    const rowsToSave=serializeRows(allRows).map(r=>{
+      if(!r.receiptFile)return r;
+      if(r.receiptFile.driveFileId){
+        // Receipt lives in its own Drive file — just store the reference
+        return{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,driveFileId:r.receiptFile.driveFileId,pdfPreview:r.receiptFile.pdfPreview||false}};
+      }
+      // No driveFileId — receipt upload may have failed. Embed data if small enough.
+      if(r.receiptFile.data&&r.receiptFile.data.length<=1*1024*1024){
+        return r; // small enough to embed
+      }
+      if(r.receiptFile.data){
+        dbg('receipt has no driveFileId and is too large, stripping',{name:r.receiptFile.name});
         return{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,data:null,stripped:true}};
       }
       return r;
     });
-    payload=JSON.stringify({version:3,savedAt,sessionName,rules,rows:rowsToSave});
-    // Final safety check at 25MB
-    if(payload.length>25*1024*1024){
-      rowsToSave=rowsToSave.map(r=>r.receiptFile?{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,data:null,stripped:true}}:r);
-      payload=JSON.stringify({version:3,savedAt,sessionName,rules,rows:rowsToSave,receiptsStripped:true});
-      dbg('Drive payload exceeded 25MB — stripped all receipts');
-    }
+    let payload=JSON.stringify({version:4,savedAt,sessionName,rules,rows:rowsToSave});
+    dbg('Drive payload size',{kb:Math.round(payload.length/1024)});
     if(driveFileId){
       let saveRes=await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media&fields=id,modifiedTime`,{
         method:'PATCH',headers:{Authorization:'Bearer '+driveToken,'Content-Type':'application/json'},body:payload});
       if(saveRes.status===401){
-        // Token expired — refresh and retry once
         await refreshDriveTokenIfNeeded();
         saveRes=await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media&fields=id,modifiedTime`,{
           method:'PATCH',headers:{Authorization:'Bearer '+driveToken,'Content-Type':'application/json'},body:payload});
@@ -2247,14 +2420,10 @@ async function driveSaveSession(){
     }
     const t=new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
     driveSetStatus('synced','Synced · '+t);
-    // Record the SERVER's modifiedTime as our watermark so the 60s poll only
-    // re-downloads when a *different* device writes a genuinely newer version.
     lastSavedAt=serverModifiedTime||savedAt;
-    // local autosave removed
   }catch(e){
-    driveSetStatus('error','Sync failed — saved locally');
-    const fallback={version:3,savedAt:new Date().toISOString(),sessionName,rules,rows:allRows.map(r=>r.receiptFile?{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,data:null,stripped:true}}:r).map(r=>({...r,date:dateToStr(r.date)}))};
-    // local autosave removed
+    dbg('driveSaveSession error',{error:e.message});
+    driveSetStatus('error','Sync failed');
   }finally{
     driveSaving=false;
   }
@@ -2406,12 +2575,18 @@ function saveSession(){
   const SESSION_MAX=15*1024*1024; // 15MB total session ceiling
   let stripped=0;
   let rows=serializeRows(allRows).map(r=>{
-    if(!r.receiptFile||!r.receiptFile.data||r.receiptFile.stripped)return r;
-    if(r.receiptFile.data.length>RECEIPT_MAX){
-      stripped++;
-      return{...r,receiptFile:{name:r.receiptFile.name,type:r.receiptFile.type,data:null,stripped:true}};
+    if(!r.receiptFile)return r;
+    // Strip driveFileId from local saves — it's useless without Drive
+    const rf={...r.receiptFile};
+    delete rf.driveFileId;
+    if(!rf.data||rf.stripped){
+      return{...r,receiptFile:{name:rf.name,type:rf.type,data:null,stripped:true}};
     }
-    return r;
+    if(rf.data.length>RECEIPT_MAX){
+      stripped++;
+      return{...r,receiptFile:{name:rf.name,type:rf.type,data:null,stripped:true}};
+    }
+    return{...r,receiptFile:rf};
   });
   let payload=JSON.stringify({version:3,savedAt:new Date().toISOString(),sessionName,rules,rows});
   // If still over the ceiling, strip all remaining receipts
@@ -3070,7 +3245,15 @@ function merchantSimilarity(receiptMerchant,txDesc){
   if(!words.length)return 0;
 
   // Count hits — how many hint words appear in the transaction
-  const hits=words.filter(w=>tx.includes(w));
+  // Short words (≤3 chars like "eb", "jb") need whole-word match to prevent
+  // "eb" matching "ebay". Longer words use substring match (catches abbreviations).
+  const hits=words.filter(w=>{
+    if(w.length<=3){
+      const re=new RegExp('(?:^|\\s|[^a-z])'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?:$|\\s|[^a-z])','i');
+      return re.test(tx);
+    }
+    return tx.includes(w);
+  });
 
   // Any single meaningful word match is significant; weight towards full match
   if(hits.length===0)return 0;
@@ -3114,7 +3297,10 @@ function matchAllItems(){
     dbg('matchAllItems',{name:item.name,amount:item.parsedAmount,date:item.parsedDate?dateToStr(item.parsedDate):null,hint:item.merchantHint});
 
     // Include transactions with stripped receipts — they need replacing
-    const available=allRows.filter(r=>r.isDebit&&(!r.receiptFile||r.receiptFile.stripped||!r.receiptFile.data));
+    // Exclude transactions that have receipts on Drive (driveFileId present)
+    const available=allRows.filter(r=>r.isDebit&&(!r.receiptFile||
+      (r.receiptFile.stripped&&!r.receiptFile.driveFileId)||
+      (!r.receiptFile.data&&!r.receiptFile.driveFileId)));
 
     // Phase 1: BOTH amount AND date required — date-only matching is too loose
     // Images use wider tolerance (±$0.50) since OCR can misread digits; PDFs use tight (±$0.015)
@@ -3183,10 +3369,15 @@ function matchAllItems(){
         // Auto-match if: (a) only 1 candidate, or (b) top is clearly ahead of #2
         // (gap ≥ 0.25 means at least one strong date/amount signal), or (c) top has
         // both date AND amount very close (dateProx ≥ 0.8 AND amtProx ≥ 0.8).
+        // BUT: never auto-match when amounts differ wildly (amtProx < 0.15 = >70% off).
+        // This prevents a $807 receipt matching a $72 transaction just because the
+        // name and date are close.
         const runner=(free.length>=2)?free[1]:ns[1];
         const gap=runner?pick.composite-runner.composite:1;
         const strongBoth=pick.dateProx>=0.8&&pick.amtProx>=0.8;
-        item.status=(ns.length===1||gap>=0.25||strongBoth)?'matched':'ambiguous';
+        const hasAmt=item.parsedAmount!==null&&item.parsedAmount>0;
+        const amtWildlyOff=hasAmt&&pick.amtProx<0.15;
+        item.status=(!amtWildlyOff&&(ns.length===1||gap>=0.25||strongBoth))?'matched':'ambiguous';
         return;
       }
     }
@@ -3321,26 +3512,44 @@ function bulkAssign(idx,val){
   renderBulkResults();
 }
 
-function applyBulkReceipts(){
+async function applyBulkReceipts(){
   let count=0;
+  const toCompress=[];
   bulkItems.forEach(item=>{
     if(!item.assignedId)return;
     const r=allRows.find(r=>r.id===item.assignedId);
     if(!r)return;
-    r.receiptFile={name:item.name,type:item.type==='pdf'?'application/pdf':item.file.type,data:item.dataUrl};
-    r.receipt='Yes';
+    const isPdf=item.type==='pdf';
+    const dataSize=item.dataUrl?item.dataUrl.length:0;
+    // Queue large PDFs for compression
+    if(isPdf&&dataSize>500*1024){
+      toCompress.push({item,row:r});
+    } else {
+      r.receiptFile={name:item.name,type:isPdf?'application/pdf':item.file.type,data:item.dataUrl};
+      r.receipt='Yes';
+    }
     count++;
   });
-  // Remove applied items; keep unassigned ones in queue for next attempt
+  // Compress large PDFs in parallel
+  if(toCompress.length>0){
+    toast(`⏳ Compressing ${toCompress.length} large PDF${toCompress.length>1?'s':''}…`);
+    await Promise.all(toCompress.map(async({item,row})=>{
+      const preview=await compressPdfToPreview(item.dataUrl,300);
+      if(preview){
+        row.receiptFile={name:item.name,type:'image/jpeg',data:preview,pdfPreview:true};
+      } else {
+        row.receiptFile={name:item.name,type:'application/pdf',data:item.dataUrl};
+      }
+      row.receipt='Yes';
+    }));
+  }
   bulkItems=bulkItems.filter(i=>!i.assignedId||!allRows.find(r=>r.id===i.assignedId)?.receiptFile);
   closeBulkRcpt();
   detectDuplicates();
   renderTable();updateBulkBarCount();
   if(driveToken){
-    // Pause poll timer during save to prevent race condition overwriting applied receipts
     if(drivePollTimer){clearInterval(drivePollTimer);drivePollTimer=null;}
     driveSaveSession().then(()=>{
-      // Restart poll after save completes
       startDrivePollTimer();
     }).catch(()=>startDrivePollTimer());
   }
