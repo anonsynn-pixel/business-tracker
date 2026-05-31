@@ -142,6 +142,15 @@ main{max-width:1280px;margin:0 auto;padding:1.25rem 1.5rem 3rem;}
 .readiness-item .ri-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
 .readiness-done{font-size:13px;color:var(--green);font-weight:500;}
 
+/* ── Settings ── */
+.settings-section-label{font-size:11px;font-family:var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;}
+.settings-toggle{display:flex;align-items:flex-start;gap:12px;padding:10px 12px;border-radius:8px;cursor:pointer;transition:background 0.15s;margin-bottom:4px;}
+.settings-toggle:hover{background:var(--pale);}
+.settings-toggle input[type="checkbox"]{margin-top:3px;width:16px;height:16px;accent-color:var(--teal);flex-shrink:0;}
+.settings-toggle-info{flex:1;}
+.settings-toggle-title{font-size:13px;font-weight:500;color:var(--text);}
+.settings-toggle-desc{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5;}
+
 /* ── BAS ── */
 .bas-panel{background:var(--surface);border-radius:12px;border:1px solid var(--border);margin-bottom:1rem;overflow:hidden;}
 .bas-hdr{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;cursor:pointer;user-select:none;}
@@ -229,13 +238,26 @@ td{padding:10px 11px;color:var(--text);vertical-align:middle;}
 .cat-select:disabled,.gst-sel:disabled{opacity:0.4;cursor:not-allowed;}
 .gst-sel{border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-family:var(--sans);font-size:12px;color:var(--text);background:var(--surface);outline:none;cursor:pointer;min-width:56px;}
 /* Dark mode selects & options */
-.dark .cat-select,.dark .gst-sel,.dark select{background:#1a3050;color:#d8e8f4;border-color:#3a5575;}
-.dark select option{background:#1a3050;color:#d8e8f4;}
+.dark .cat-select,.dark .gst-sel,.dark select{background:#1e3850;color:#e0ecf4;border-color:#3a5f7a;}
+.dark select option{background:#1e3850;color:#e0ecf4;}
 .dark tbody tr{border-bottom-color:#1e2d3e;}
 .dark tbody tr:hover{background:#1e2d3e;}
 .dark tbody tr.dup-row{background:#2e1e00;}
 .dark tbody tr.selected-row{background:#0d2040!important;}
 .dark .cat-select:focus,.dark .gst-sel:focus{border-color:var(--accent);}
+/* Dark modal/input contrast fixes */
+.dark .rule-input,.dark .rules-add-kw,.dark .rules-add-cat{background:#1e3850;color:#e0ecf4;border-color:#3a5f7a;}
+.dark .rule-input:focus,.dark .rules-add-kw:focus,.dark .rules-add-cat:focus{border-color:var(--accent);}
+.dark .toolbar input[type="text"],.dark .toolbar input[type="date"],.dark .toolbar select{background:#1e3850;color:#e0ecf4;border-color:#3a5f7a;}
+.dark .toolbar input:focus{border-color:var(--accent);}
+.dark .note-input{color:#d0dde8;}
+.dark .note-input:hover,.dark .note-input:focus{background:#1e3850;border-color:#3a5f7a;}
+.dark .bas-card.current-q{border-color:var(--gold);background:#1e1a10;}
+.dark .bas-fy-sel{background:#1e3850;color:#e0ecf4;border-color:#3a5f7a;}
+.dark .bulk-cat-sel{background:#1e3850;color:#e0ecf4;}
+.dark .br-assign-sel{background:#1e3850;color:#e0ecf4;border-color:#3a5f7a;}
+.dark .apikey-input{background:#1e3850;color:#e0ecf4;border-color:#3a5f7a;}
+.dark .readiness-label,.dark .readiness-pct{color:#d0dde8!important;}
 .badge-na{background:#f0f0f0;color:var(--muted);font-family:var(--mono);font-size:10px;padding:3px 7px;border-radius:20px;}
 .dark .badge-na{background:#2a3f55;color:#6a8a9a;}
 .note-input{border:1px solid transparent;border-radius:5px;padding:4px 6px;font-family:var(--sans);font-size:12px;color:var(--text);background:transparent;outline:none;width:115px;transition:all 0.15s;}
@@ -460,7 +482,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     </button>
     <button class="btn-drive-signout" id="btn-drive-signout" onclick="driveSignOut()">Sign out</button>
     <div id="backup-dot" style="display:none"></div>
-    <button class="hbtn hbtn-ghost" id="btn-rules"   onclick="openRules()">⚙ Rules</button>
+    <button class="hbtn hbtn-ghost" id="btn-settings" onclick="openSettings()">⚙ Settings</button>
     <button class="hbtn hbtn-ghost" id="btn-load"    onclick="document.getElementById('session-input').click()">↑ Load session</button>
     <button class="hbtn hbtn-save"  id="btn-save"    onclick="saveSession()">↓ Save session</button>
     <button class="hbtn hbtn-ghost" id="btn-csv"     onclick="exportCSV()">CSV</button>
@@ -485,7 +507,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
   <button class="mmenu-btn teal" id="mmenu-drive" onclick="driveSignIn();closeMobileMenu()" style="display:none">🔗 Connect Google Drive</button>
   <button class="mmenu-btn" id="mmenu-signout" onclick="driveSignOut();closeMobileMenu()" style="display:none">Sign out of Drive</button>
   <div class="mmenu-sep" id="mmenu-sep1" style="display:none"></div>
-  <button class="mmenu-btn" id="mmenu-rules" onclick="openRules();closeMobileMenu()" style="display:none">⚙ Auto-categorise Rules</button>
+  <button class="mmenu-btn" id="mmenu-rules" onclick="openSettings();closeMobileMenu()" style="display:none">⚙ Settings</button>
   <button class="mmenu-btn" id="mmenu-load" onclick="document.getElementById('session-input').click();closeMobileMenu()" style="display:none">↑ Load session file</button>
   <button class="mmenu-btn teal" id="mmenu-save" onclick="saveSession();closeMobileMenu()" style="display:none">↓ Save session</button>
   <div class="mmenu-sep"></div>
@@ -547,7 +569,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <!-- KPIs -->
     <div class="kpi-grid">
       <div class="kpi-card"><div class="kpi-label">Business Debits</div><div class="kpi-value" id="kpi-total">$0.00</div></div>
-      <div class="kpi-card"><div class="kpi-label">GST Claimable</div><div class="kpi-value gold" id="kpi-gst">$0.00</div></div>
+      <div class="kpi-card"><div class="kpi-label">GST on Purchases (1B)</div><div class="kpi-value gold" id="kpi-gst">$0.00</div></div>
       <div class="kpi-card"><div class="kpi-label">Net (ex GST)</div><div class="kpi-value" id="kpi-net">$0.00</div></div>
       <div class="kpi-card" id="kpi-count-card">
         <div class="kpi-label">Business Txns</div>
@@ -556,6 +578,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
       </div>
       <div class="kpi-card"><div class="kpi-label">Personal (excluded)</div><div class="kpi-value" id="kpi-personal" style="color:var(--personal)">0</div></div>
       <div class="kpi-card"><div class="kpi-label">Credits</div><div class="kpi-value green" id="kpi-credits">$0.00</div></div>
+      <div class="kpi-card"><div class="kpi-label">GST on Sales (1A)</div><div class="kpi-value gold" id="kpi-gst-sales">$0.00</div></div>
       <div class="kpi-card" style="cursor:pointer" onclick="document.getElementById('receipt-filter').value='missing';renderTable()" title="Click to show missing receipts">
         <div class="kpi-label">Missing Receipts</div>
         <div class="kpi-value" id="kpi-missing-rcpt" style="color:var(--orange)">0</div>
@@ -575,7 +598,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
     <!-- BAS Panel -->
     <div class="bas-panel">
       <div class="bas-hdr" onclick="toggleBAS()">
-        <div class="bas-title">📋 BAS Summary — Quarterly GST <span class="bas-title-badge">ATO</span></div>
+        <div class="bas-title">📋 BAS Summary — GST on Sales (1A) & Purchases (1B) <span class="bas-title-badge">ATO</span></div>
         <div style="display:flex;align-items:center;gap:10px;">
           <select class="bas-fy-sel" id="bas-fy-sel" onclick="event.stopPropagation()" onchange="renderBAS();updatePeriodLabels()">
             <option value="2025">FY 2024–25</option>
@@ -587,7 +610,7 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
       </div>
       <div class="bas-body" id="bas-body">
         <div class="bas-grid" id="bas-grid"></div>
-        <div class="bas-note">⚠ GST estimates only (1/11th of total, business transactions only). Personal transactions excluded. Confirm with your accountant before lodging BAS.</div>
+        <div class="bas-note">⚠ GST estimates only (1/11th of GST-inclusive amounts). 1A = GST collected on sales, 1B = GST paid on purchases. Personal transactions excluded. Confirm with your accountant before lodging BAS.</div>
       </div>
     </div>
 
@@ -805,6 +828,45 @@ input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--
   </div>
 </div>
 
+<!-- Settings modal -->
+<div id="settings-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;align-items:flex-start;justify-content:center;padding-top:80px;">
+  <div class="rules-box" style="width:min(520px,94vw)">
+    <div class="rules-hdr">
+      <div class="rules-hdr-title">⚙ Settings</div>
+      <button class="rules-close" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="rules-body" style="padding:20px">
+      <div class="settings-section-label">Auto-Categorisation</div>
+      <label class="settings-toggle">
+        <input type="checkbox" id="set-autocat" onchange="settings.autoPropagateCategory=this.checked;saveSettings()">
+        <div class="settings-toggle-info">
+          <div class="settings-toggle-title">Auto-propagate categories</div>
+          <div class="settings-toggle-desc">Categorise one transaction → all matching merchants get the same category</div>
+        </div>
+      </label>
+      <label class="settings-toggle">
+        <input type="checkbox" id="set-autobp" onchange="settings.autoPropagateBP=this.checked;saveSettings()">
+        <div class="settings-toggle-info">
+          <div class="settings-toggle-title">Auto-propagate Business / Personal</div>
+          <div class="settings-toggle-desc">Mark one merchant as Personal → all matching transactions follow</div>
+        </div>
+      </label>
+      <label class="settings-toggle">
+        <input type="checkbox" id="set-learn" onchange="settings.learnRules=this.checked;saveSettings()">
+        <div class="settings-toggle-info">
+          <div class="settings-toggle-title">Learn rules from actions</div>
+          <div class="settings-toggle-desc">Auto-create keyword rules when you categorise so future imports are pre-filled</div>
+        </div>
+      </label>
+      <div class="settings-section-label" style="margin-top:18px">Rules</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="rules-apply-btn" style="font-size:12px;padding:7px 16px" onclick="closeSettings();openRules()">Open Auto-categorise Rules</button>
+        <span style="font-size:12px;color:var(--muted)" id="settings-rules-count"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <input type="file" id="file-input"    accept=".csv"  style="display:none" onchange="handleFile(this.files[0])">
 <input type="file" id="session-input" accept=".json" style="display:none" onchange="loadSession(this.files[0])">
 
@@ -835,6 +897,20 @@ const CATS=['COGS (Cost of Goods Sold)','Advertising & Marketing','Meals & Enter
   'Freight & Postage','Insurance','Motor Vehicle','Office Supplies','Rent & Utilities',
   'Software / Subscriptions','Training & Education','Travel','Utilities',
   'Wages & Salaries','Bank Fees','Other'];
+
+const INCOME_CATS=['Sales Revenue','eBay / Marketplace Sales','Refunds & Returns',
+  'Interest Income','Service Income','Other Income'];
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+const DEFAULT_SETTINGS={
+  autoPropagateCategory:true,
+  autoPropagateBP:true,
+  learnRules:true,
+};
+let settings={...DEFAULT_SETTINGS};
+function loadSettings(){try{const s=localStorage.getItem('anz_settings');if(s)settings={...DEFAULT_SETTINGS,...JSON.parse(s)};}catch(e){}}
+function saveSettings(){try{localStorage.setItem('anz_settings',JSON.stringify(settings));}catch(e){}}
+loadSettings();
 
 const DEFAULT_RULES=[
   {kw:'amazon',cat:'Software / Subscriptions'},
@@ -979,7 +1055,7 @@ function parseCSV(text){
     if(!date||!desc)continue;
     const pd=parseDate(date);const isD=debit>0;const amt=isD?debit:credit;
     parsed.push({date:pd||date,dateRaw:date,description:desc,amount:amt,isDebit:isD,
-      gstIncluded:isD?'yes':'no',gstAmt:isD?+(amt/11).toFixed(2):0,
+      gstIncluded:'yes',gstAmt:+(amt/11).toFixed(2),
       category:'',receipt:'No',receiptFile:null,notes:'',bpType:'business',
       isDup:false,autoCat:false,id:Math.random().toString(36).slice(2)});
   }
@@ -1102,19 +1178,31 @@ function dismissDups(){
 // ── Auto-detect / rules ───────────────────────────────────────────────────────
 function runAutoCatSilent(){
   autoCatSuggestions=[];
+  let bpCount=0;
   allRows.forEach(r=>{
-    if(!r.isDebit||r.category||r.autoCatSkip)return; // skip if manually left uncategorised
+    if(!r.isDebit)return;
     const desc=r.description.toLowerCase();
     for(const rule of rules){
       if(desc.includes(rule.kw.toLowerCase())){
-        autoCatSuggestions.push({id:r.id,cat:rule.cat});
+        // Apply B/P rule directly (personal merchants stay personal across imports)
+        if(rule.bp&&r.bpType!==rule.bp){
+          r.bpType=rule.bp;
+          bpCount++;
+        }
+        // Suggest category only if still business and uncategorised
+        if(rule.cat&&!r.category&&!r.autoCatSkip&&r.bpType==='business'){
+          autoCatSuggestions.push({id:r.id,cat:rule.cat});
+        }
         break;
       }
     }
   });
-  if(autoCatSuggestions.length>0&&!autocatDismissed){
+  const parts=[];
+  if(autoCatSuggestions.length>0)parts.push(`<strong>${autoCatSuggestions.length}</strong> auto-categorised`);
+  if(bpCount>0)parts.push(`<strong>${bpCount}</strong> marked personal`);
+  if(parts.length>0&&!autocatDismissed){
     document.getElementById('autocat-text').innerHTML=
-      `<strong>✦ ${autoCatSuggestions.length} transaction${autoCatSuggestions.length>1?'s':''} auto-categorised</strong> by merchant rules — review and apply, or adjust in ⚙ Rules.`;
+      `<strong>✦ ${parts.join(' · ')}</strong> by merchant rules — review and apply, or adjust in ⚙ Rules.`;
     document.getElementById('autocat-banner').classList.add('visible');
   }
 }
@@ -1158,12 +1246,27 @@ function dismissAutocat(){
 }
 
 // Rules modal
+function openSettings(){
+  document.getElementById('set-autocat').checked=settings.autoPropagateCategory;
+  document.getElementById('set-autobp').checked=settings.autoPropagateBP;
+  document.getElementById('set-learn').checked=settings.learnRules;
+  const bpCount=rules.filter(r=>r.bp==='personal').length;
+  document.getElementById('settings-rules-count').textContent=rules.length+' rules'+(bpCount?' · '+bpCount+' personal':'');
+  document.getElementById('settings-modal').style.display='flex';
+}
+function closeSettings(){document.getElementById('settings-modal').style.display='none';}
 function openRules(){
+  closeSettings();
   renderRulesList();
-  // populate add-rule cat dropdown
+  // populate add-rule cat dropdown with both expense and income categories
   const s=document.getElementById('new-rule-cat');
   s.innerHTML='<option value="">Select category…</option>';
-  CATS.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;s.appendChild(o);});
+  const gExp=document.createElement('optgroup');gExp.label='Expenses';
+  CATS.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;gExp.appendChild(o);});
+  s.appendChild(gExp);
+  const gInc=document.createElement('optgroup');gInc.label='Income';
+  INCOME_CATS.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;gInc.appendChild(o);});
+  s.appendChild(gInc);
   document.getElementById('rules-modal').classList.add('open');
 }
 function closeRules(){document.getElementById('rules-modal').classList.remove('open');}
@@ -1175,9 +1278,13 @@ function renderRulesList(){
       <select class="rule-input" onchange="rules[${i}].cat=this.value">
         <option value="">Select…</option>${CATS.map(c=>`<option value="${esc(c)}" ${r.cat===c?'selected':''}>${esc(c)}</option>`).join('')}
       </select>
-      <button class="rule-del" onclick="deleteRule(${i})">✕</button>
+      <div style="display:flex;align-items:center;gap:6px">
+        ${r.bp==='personal'?'<span style="font-size:10px;font-family:var(--mono);color:var(--personal);background:var(--personal-bg);padding:2px 6px;border-radius:4px;white-space:nowrap" title="Auto-marked Personal on import">P</span>':''}
+        <button class="rule-del" onclick="deleteRule(${i})">✕</button>
+      </div>
     </div>`).join('');
-  document.getElementById('rules-status').textContent=rules.length+' rules';
+  const bpCount=rules.filter(r=>r.bp==='personal').length;
+  document.getElementById('rules-status').textContent=rules.length+' rules'+(bpCount?' · '+bpCount+' personal':'');
 }
 function addRule(){
   const kw=document.getElementById('new-rule-kw').value.trim();
@@ -1313,7 +1420,11 @@ function updateKPIs(){
   document.getElementById('kpi-net').textContent=fmtAUD(total-gst);
   document.getElementById('kpi-count').textContent=biz.length;
   document.getElementById('kpi-personal').textContent=allRows.filter(r=>r.bpType==='personal').length;
-  document.getElementById('kpi-credits').textContent=fmtAUD(allRows.filter(r=>!r.isDebit).reduce((s,r)=>s+r.amount,0));
+  const bizCredits=allRows.filter(r=>!r.isDebit&&r.bpType==='business');
+  document.getElementById('kpi-credits').textContent=fmtAUD(bizCredits.reduce((s,r)=>s+r.amount,0));
+  const gstSales=bizCredits.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0);
+  const gstSalesEl=document.getElementById('kpi-gst-sales');
+  if(gstSalesEl)gstSalesEl.textContent=fmtAUD(gstSales);
   const missingRcpt=allRows.filter(r=>r.isDebit&&r.bpType==='business'&&!r.receiptFile).length;
   const mrEl=document.getElementById('kpi-missing-rcpt');
   if(mrEl){mrEl.textContent=missingRcpt;mrEl.style.color=missingRcpt>0?'var(--orange)':'var(--green)';}
@@ -1377,20 +1488,35 @@ function renderBAS(){
     {label:'Q4',dates:`1 Apr ${fyYr} – 30 Jun ${fyYr}`,from:new Date(fyYr,3,1),to:new Date(fyYr,5,30,23,59,59)},
   ];
   const now=new Date();
-  const biz=allRows.filter(r=>r.isDebit&&r.bpType==='business');
+  const inQ=(r,q)=>{const d=r.date instanceof Date?r.date:null;return d&&!isNaN(d)&&d>=q.from&&d<=q.to;};
   document.getElementById('bas-grid').innerHTML=qs.map(q=>{
-    const qr=biz.filter(r=>{const d=r.date instanceof Date?r.date:null;return d&&!isNaN(d)&&d>=q.from&&d<=q.to;});
-    const tot=+qr.reduce((s,r)=>s+r.amount,0).toFixed(2);
-    const gst=+qr.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);
+    const bizDebit=allRows.filter(r=>r.isDebit&&r.bpType==='business'&&inQ(r,q));
+    const bizCredit=allRows.filter(r=>!r.isDebit&&r.bpType==='business'&&inQ(r,q));
+    const hasData=bizDebit.length||bizCredit.length;
+    const totSpend=+bizDebit.reduce((s,r)=>s+r.amount,0).toFixed(2);
+    const gst1B=+bizDebit.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);
+    const totIncome=+bizCredit.reduce((s,r)=>s+r.amount,0).toFixed(2);
+    const gst1A=+bizCredit.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);
+    const netGST=+(gst1A-gst1B).toFixed(2);
     const isCur=now>=q.from&&now<=q.to;
-    return`<div class="bas-card ${qr.length?'has-data':''} ${isCur?'current-q':''}">
+    return`<div class="bas-card ${hasData?'has-data':''} ${isCur?'current-q':''}">
       <div class="bas-q-label">${q.label} — FY${fyYr.toString().slice(2)} ${isCur?'<span class="bas-cur-badge">NOW</span>':''}</div>
       <div class="bas-q-dates">${q.dates}</div>
-      ${qr.length?`
-        <div class="bas-row"><span>Transactions</span><span class="bas-val">${qr.length}</span></div>
-        <div class="bas-row"><span>Total spend (incl. GST)</span><span class="bas-val navy">${fmtAUD(tot)}</span></div>
-        <div class="bas-row"><span>GST claimable (1B)</span><span class="bas-val gold">${fmtAUD(gst)}</span></div>
-        <div class="bas-row"><span>Net (ex GST)</span><span class="bas-val navy">${fmtAUD(tot-gst)}</span></div>
+      ${hasData?`
+        ${bizDebit.length?`
+          <div class="bas-row"><span>Purchases (incl. GST)</span><span class="bas-val navy">${fmtAUD(totSpend)}</span></div>
+          <div class="bas-row"><span>GST on purchases (1B)</span><span class="bas-val gold">${fmtAUD(gst1B)}</span></div>
+        `:''}
+        ${bizCredit.length?`
+          <div class="bas-row"><span>Income (incl. GST)</span><span class="bas-val" style="color:var(--green)">${fmtAUD(totIncome)}</span></div>
+          <div class="bas-row"><span>GST on sales (1A)</span><span class="bas-val gold">${fmtAUD(gst1A)}</span></div>
+        `:''}
+        ${bizDebit.length&&bizCredit.length?`
+          <div class="bas-row" style="border-top:1px solid var(--border);padding-top:6px;margin-top:4px">
+            <span style="font-weight:600">${netGST>=0?'GST to pay':'GST refund'}</span>
+            <span class="bas-val" style="font-weight:600;color:${netGST>=0?'var(--red)':'var(--green)'}">${fmtAUD(Math.abs(netGST))}</span>
+          </div>
+        `:''}
       `:`<div style="font-size:12px;color:var(--muted);padding:4px 0">No transactions</div>`}
     </div>`;
   }).join('');
@@ -1438,7 +1564,12 @@ function bulkSetBP(val){
 function buildBulkCatSel(){
   const s=document.getElementById('bulk-cat-sel');
   s.innerHTML='<option value="">Set category…</option>';
-  CATS.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;s.appendChild(o);});
+  const gExp=document.createElement('optgroup');gExp.label='Expenses';
+  CATS.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;gExp.appendChild(o);});
+  s.appendChild(gExp);
+  const gInc=document.createElement('optgroup');gInc.label='Income';
+  INCOME_CATS.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;gInc.appendChild(o);});
+  s.appendChild(gInc);
 }
 
 // ── Sort / render ─────────────────────────────────────────────────────────────
@@ -1474,7 +1605,10 @@ function renderTable(){
     return;
   }
 
-  const catOpts=r=>CATS.map(c=>`<option value="${esc(c)}" ${r.category===c?'selected':''}>${esc(c)}</option>`).join('');
+  const catOpts=r=>{
+    const list=r.isDebit?CATS:INCOME_CATS;
+    return list.map(c=>`<option value="${esc(c)}" ${r.category===c?'selected':''}>${esc(c)}</option>`).join('');
+  };
   const isP=r=>r.bpType==='personal';
 
   document.getElementById('table-body').innerHTML=rows.map(r=>{
@@ -1482,8 +1616,8 @@ function renderTable(){
     const cls=(r.isDup?'dup-row':isP(r)?'personal-row':'')+(isSel?' selected-row':'');
     const amtCell=r.isDebit?`<td class="td-amount">${fmtAUD(r.amount)}</td>`:`<td class="td-credit">+${fmtAUD(r.amount)}</td>`;
     const bpCell=`<td><div class="bp-toggle"><button class="bp-btn ${!isP(r)?'act-b':''}" onclick="setBP('${r.id}','business')">B</button><button class="bp-btn ${isP(r)?'act-p':''}" onclick="setBP('${r.id}','personal')">P</button></div></td>`;
-    const gstCell=r.isDebit?`<td><select class="gst-sel" onchange="setGST('${r.id}',this.value)" ${isP(r)?'disabled':''}><option value="yes" ${r.gstIncluded==='yes'?'selected':''}>Yes</option><option value="no" ${r.gstIncluded==='no'?'selected':''}>No</option></select></td>`:`<td><span class="badge-na">N/A</span></td>`;
-    const gstAmt=r.isDebit&&r.gstIncluded==='yes'&&!isP(r)?`<td class="td-amount" style="color:var(--gold)">${fmtAUD(r.gstAmt)}</td>`:`<td class="td-mono" style="color:#ccc">—</td>`;
+    const gstCell=`<td><select class="gst-sel" onchange="setGST('${r.id}',this.value)" ${isP(r)?'disabled':''}><option value="yes" ${r.gstIncluded==='yes'?'selected':''}>Yes</option><option value="no" ${r.gstIncluded==='no'?'selected':''}>No</option></select></td>`;
+    const gstAmt=r.gstIncluded==='yes'&&!isP(r)?`<td class="td-amount" style="color:var(--gold)">${fmtAUD(r.gstAmt)}</td>`:`<td class="td-mono" style="color:#ccc">—</td>`;
     const isStripped=r.receiptFile&&(r.receiptFile.stripped||!r.receiptFile.data);
     const rcpt=r.receiptFile?`<div class="rcpt-cell"><div class="rcpt-badge ${isStripped?'rcpt-badge-stripped':''}" onclick="viewReceipt('${r.id}')" title="${isStripped?'File data missing — tap Replace to re-attach':r.receiptFile.name}"><span>${esc(r.receiptFile.name)}</span></div>${isStripped?`<button class="rcpt-btn" style="color:var(--orange);border-color:var(--orange)" onclick="document.getElementById('rf_${r.id}').click()" title="Re-attach file to restore preview">↻ Replace</button>`:`<span class="rcpt-remove" onclick="removeReceipt('${r.id}')">✕</span>`}<input type="file" id="rf_${r.id}" accept="image/*,.pdf" style="display:none" onchange="attachReceipt('${r.id}',this)"></div>`:`<div class="rcpt-cell"><button class="rcpt-btn" onclick="document.getElementById('rf_${r.id}').click()">+ Attach</button><input type="file" id="rf_${r.id}" accept="image/*,.pdf" style="display:none" onchange="attachReceipt('${r.id}',this)"></div>`;
     const descExtra=(r.isDup?` <span class="dup-flag">⚠ dup</span>`:'')+(r.autoCat?` <span class="autocat-flag">✦ auto</span>`:'');
@@ -1502,8 +1636,8 @@ function renderTable(){
   // Mobile cards
   document.getElementById('mobile-cards').innerHTML=rows.map(r=>{
     const cls=r.isDup?'dup-card':isP(r)?'personal-card':'';
-    const co2=CATS.map(c=>`<option value="${esc(c)}" ${r.category===c?'selected':''}>${esc(c)}</option>`).join('');
-    const gl=r.isDebit&&r.gstIncluded==='yes'&&!isP(r)?`<div class="m-gst">GST est. ${fmtAUD(r.gstAmt)}</div>`:'';
+    const co2=(r.isDebit?CATS:INCOME_CATS).map(c=>`<option value="${esc(c)}" ${r.category===c?'selected':''}>${esc(c)}</option>`).join('');
+    const gl=r.gstIncluded==='yes'&&!isP(r)?`<div class="m-gst">GST est. ${fmtAUD(r.gstAmt)}</div>`:'';
       const{main:mMain,sub:mSub}=getDisplayDesc(r);
     return`<div class="m-card ${cls}">
       <div class="m-card-top">
@@ -1515,7 +1649,7 @@ function renderTable(){
         <div class="m-field" style="grid-column:1/-1"><label>Business / Personal</label><div class="bp-toggle m-bp"><button class="bp-btn ${!isP(r)?'act-b':''}" onclick="setBP('${r.id}','business')">Business</button><button class="bp-btn ${isP(r)?'act-p':''}" onclick="setBP('${r.id}','personal')">Personal</button></div></div>
         <div class="m-field"><label>Category</label><select onchange="setCat('${r.id}',this.value)" ${isP(r)?'disabled':''}><option value="">— Select —</option>${co2}</select></div>
         <div class="m-field"><label>Receipt</label>${r.receiptFile?(()=>{const stripped=r.receiptFile.stripped||!r.receiptFile.data;return`<div style="display:flex;flex-direction:column;gap:4px"><div class="rcpt-badge ${stripped?'rcpt-badge-stripped':''}" onclick="viewReceipt('${r.id}')"><span>${esc(r.receiptFile.name)}</span></div><div style="display:flex;gap:6px"><button class="rcpt-btn" style="${stripped?'color:var(--orange);border-color:var(--orange);':''}flex:1" onclick="document.getElementById('rfm_${r.id}').click()">${stripped?'↻ Replace file':'↻ Replace'}</button><button class="rcpt-btn" style="color:var(--red);border-color:var(--red)" onclick="removeReceipt('${r.id}')">✕ Remove</button></div><input type="file" id="rfm_${r.id}" accept="image/*,.pdf" style="display:none" onchange="attachReceipt('${r.id}',this)"></div>`;})():`<button class="rcpt-btn" onclick="document.getElementById('rfm_${r.id}').click()">+ Attach</button><input type="file" id="rfm_${r.id}" accept="image/*,.pdf" style="display:none" onchange="attachReceipt('${r.id}',this)">`}</div>
-        ${r.isDebit?`<div class="m-field"><label>GST</label><select class="gst-sel" onchange="setGST('${r.id}',this.value)" ${isP(r)?'disabled':''}><option value="yes" ${r.gstIncluded==='yes'?'selected':''}>Yes</option><option value="no" ${r.gstIncluded==='no'?'selected':''}>No</option></select></div>`:''}
+        <div class="m-field"><label>GST</label><select class="gst-sel" onchange="setGST('${r.id}',this.value)" ${isP(r)?'disabled':''}><option value="yes" ${r.gstIncluded==='yes'?'selected':''}>Yes</option><option value="no" ${r.gstIncluded==='no'?'selected':''}>No</option></select></div>
         <div class="m-field" style="grid-column:1/-1"><label>Notes</label><input type="text" value="${esc(r.notes||'')}" placeholder="Add note…" oninput="setNote('${r.id}',this.value)"></div>
       </div>
     </div>`;
@@ -1525,7 +1659,10 @@ function renderTable(){
   const vd=vBiz.reduce((s,r)=>s+r.amount,0);
   const vg=vBiz.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0);
   const vP=rows.filter(r=>r.bpType==='personal').length;
-  document.getElementById('table-footer').innerHTML=`<span><strong>${rows.length}</strong> shown</span><span>Business: <strong>${fmtAUD(vd)}</strong></span><span>GST: <strong style="color:var(--gold)">${fmtAUD(vg)}</strong></span><span>Net: <strong>${fmtAUD(vd-vg)}</strong></span>${vP?`<span style="color:var(--personal)"><strong>${vP}</strong> personal</span>`:''}`;
+  const vInc=rows.filter(r=>!r.isDebit&&r.bpType==='business');
+  const vIncAmt=vInc.reduce((s,r)=>s+r.amount,0);
+  const vIncGst=vInc.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0);
+  document.getElementById('table-footer').innerHTML=`<span><strong>${rows.length}</strong> shown</span><span>Spend: <strong>${fmtAUD(vd)}</strong></span><span>1B: <strong style="color:var(--gold)">${fmtAUD(vg)}</strong></span>${vIncAmt?`<span>Income: <strong style="color:var(--green)">${fmtAUD(vIncAmt)}</strong></span><span>1A: <strong style="color:var(--gold)">${fmtAUD(vIncGst)}</strong></span>`:''}<span>Net: <strong>${fmtAUD(vd-vIncAmt)}</strong></span>${vP?`<span style="color:var(--personal)"><strong>${vP}</strong> personal</span>`:''}`;
 }
 
 // ── Row setters ───────────────────────────────────────────────────────────────
@@ -1534,25 +1671,28 @@ function setBP(id,val){
   const r=allRows.find(r=>r.id===id);if(!r)return;
   const prevVal=r.bpType;
   r.bpType=val;
-  // Auto-propagate: same logic as setCat — same merchant, opposite B/P, flip them all
   const merchant=cleanMerchant(r.description);
   if(merchant.length>=3){
-    const opposite=val==='personal'?'business':'personal';
-    const siblings=allRows.filter(s=>
-      s.id!==id&&s.bpType===opposite
-      &&cleanMerchant(s.description)===merchant);
-    if(siblings.length>0){
-      const undoData=siblings.map(s=>({id:s.id,prev:s.bpType}));
-      siblings.forEach(s=>{s.bpType=val;});
-      _lastBPUndo={mainId:id,prevVal,siblings:undoData,merchant,val};
-      updateKPIs();renderTable();renderBAS();scheduleDriveSave();
-      toast(
-        `✓ Marked ${siblings.length+1} ${merchant} transactions as ${val}`,
-        6000,
-        {label:'Undo',fn:()=>{undoLastBPPropagation();}}
-      );
-      return;
+    if(settings.autoPropagateBP){
+      const opposite=val==='personal'?'business':'personal';
+      const siblings=allRows.filter(s=>
+        s.id!==id&&s.bpType===opposite
+        &&cleanMerchant(s.description)===merchant);
+      if(siblings.length>0){
+        const undoData=siblings.map(s=>({id:s.id,prev:s.bpType}));
+        siblings.forEach(s=>{s.bpType=val;});
+        const ruleUndo=settings.learnRules?learnBPRule(r.description,val):null;
+        _lastBPUndo={mainId:id,prevVal,siblings:undoData,merchant,val,ruleUndo};
+        updateKPIs();renderTable();renderBAS();scheduleDriveSave();
+        toast(
+          `✓ Marked ${siblings.length+1} ${merchant} transactions as ${val}`,
+          6000,
+          {label:'Undo',fn:()=>{undoLastBPPropagation();}}
+        );
+        return;
+      }
     }
+    if(settings.learnRules)learnBPRule(r.description,val);
   }
   updateKPIs();renderTable();renderBAS();scheduleDriveSave();
 }
@@ -1564,9 +1704,54 @@ function undoLastBPPropagation(){
     const row=allRows.find(r=>r.id===s.id);
     if(row)row.bpType=s.prev;
   });
+  // Undo the learned rule
+  if(u.ruleUndo){
+    if(u.ruleUndo.type==='added-bp'){
+      const rule=rules.find(r=>r.kw===u.ruleUndo.kw);
+      if(rule){
+        if(rule.cat){delete rule.bp;} // keep cat rule, just remove bp
+        else{const idx=rules.indexOf(rule);if(idx>=0)rules.splice(idx,1);} // bp-only rule, remove entirely
+      }
+    } else if(u.ruleUndo.type==='updated-bp'){
+      const rule=rules.find(r=>r.kw===u.ruleUndo.kw);
+      if(rule){if(u.ruleUndo.prevBP)rule.bp=u.ruleUndo.prevBP;else delete rule.bp;}
+    }
+  }
   _lastBPUndo=null;
   updateKPIs();renderTable();renderBAS();scheduleDriveSave();
   toast(`↩ Undone — ${u.merchant} reverted`);
+}
+
+// Learn a B/P rule from a raw description. Adds bp field to existing rules
+// or creates a bp-only rule. Returns undo info.
+function learnBPRule(rawDesc,bpVal){
+  // Only learn 'personal' rules — 'business' is the default, no rule needed
+  if(bpVal!=='personal')return null;
+  const desc=rawDesc.toLowerCase();
+  for(const rule of rules){
+    if(desc.includes(rule.kw.toLowerCase())){
+      if(rule.bp!==bpVal){
+        const prevBP=rule.bp;
+        rule.bp=bpVal;
+        dbg('learned BP rule (updated)',{kw:rule.kw,bp:bpVal});
+        return{type:'updated-bp',kw:rule.kw,bp:bpVal,prevBP};
+      }
+      return null;
+    }
+  }
+  const cleaned=cleanMerchant(rawDesc).toLowerCase();
+  const words=cleaned.split(/\s+/).filter(w=>
+    w.length>1&&!GENERIC_WORDS.has(w)&&!LOCATION_WORDS.has(w));
+  if(!words.length)return null;
+  for(let len=Math.min(words.length,2);len>=1;len--){
+    const kw=words.slice(0,len).join(' ');
+    if(kw.length>=2&&desc.includes(kw)){
+      rules.push({kw,cat:'',bp:bpVal});
+      dbg('learned BP rule (new)',{kw,bp:bpVal});
+      return{type:'added-bp',kw,bp:bpVal};
+    }
+  }
+  return null;
 }
 let _lastCatUndo=null;
 function setCat(id,val){
@@ -1574,22 +1759,17 @@ function setCat(id,val){
   if(!r)return;
   const prevCat=r.category;
   r.category=val;r.autoCat=false;
-  // Auto-propagate: when a user categorizes one merchant, apply the same
-  // category to all OTHER uncategorized business debits from that merchant.
-  // This mirrors how Xero/MYOB work — categorize once, applies everywhere.
-  if(val&&r.isDebit&&r.bpType==='business'){
+  // Auto-propagate for debits (business only); gate with settings
+  if(val&&r.isDebit&&r.bpType==='business'&&settings.autoPropagateCategory){
     const merchant=cleanMerchant(r.description);
     if(merchant.length>=3){
       const siblings=allRows.filter(s=>
         s.id!==id&&s.isDebit&&s.bpType==='business'&&!s.category
         &&cleanMerchant(s.description)===merchant);
       if(siblings.length>0){
-        // Capture undo snapshot BEFORE applying changes
         const undoData=siblings.map(s=>({id:s.id,prevCat:s.category}));
         siblings.forEach(s=>{s.category=val;s.autoCat=true;});
-        // Learn rule (returns undo info)
-        const ruleUndo=learnRule(r.description,val);
-        // Store full undo state
+        const ruleUndo=settings.learnRules?learnRule(r.description,val):null;
         _lastCatUndo={mainId:id,prevCat,siblings:undoData,ruleUndo,merchant};
         renderTable();
         toast(
@@ -1597,8 +1777,22 @@ function setCat(id,val){
           6000,
           {label:'Undo',fn:()=>{undoLastCatPropagation();}}
         );
-      } else {
+      } else if(settings.learnRules){
         learnRule(r.description,val);
+      }
+    }
+  }
+  // Auto-propagate for credits too (income categories)
+  if(val&&!r.isDebit&&settings.autoPropagateCategory){
+    const merchant=cleanMerchant(r.description);
+    if(merchant.length>=3){
+      const siblings=allRows.filter(s=>
+        s.id!==id&&!s.isDebit&&!s.category
+        &&cleanMerchant(s.description)===merchant);
+      if(siblings.length>0){
+        siblings.forEach(s=>{s.category=val;s.autoCat=true;});
+        renderTable();
+        toast(`✓ Applied "${val}" to ${siblings.length+1} ${merchant} transactions`);
       }
     }
   }
@@ -2136,7 +2330,7 @@ function showApp(){
   document.getElementById('app-section').style.display='block';
   const rb=document.getElementById('btn-resume-drive');
   if(rb)rb.style.display='none';
-  ['btn-rules','btn-load','btn-save','btn-csv','btn-xl','btn-accountant','btn-newfile'].forEach(id=>document.getElementById(id).style.display='inline-block');
+  ['btn-settings','btn-load','btn-save','btn-csv','btn-xl','btn-accountant','btn-newfile'].forEach(id=>document.getElementById(id).style.display='inline-block');
   // Hide go back button once they've committed to a new session
   const bb=document.getElementById('btn-go-back');
   if(bb){bb.style.display='none';bb._snapshot=null;}
@@ -2157,7 +2351,7 @@ function resetAll(){
   allRows=[];selectedIds.clear();showDupsOnly=false;dupDismissed=false;autocatDismissed=false;autoCatSuggestions=[];bulkItems=[];
   document.getElementById('upload-section').style.display='flex';
   document.getElementById('app-section').style.display='none';
-  ['btn-rules','btn-load','btn-save','btn-csv','btn-xl','btn-accountant','btn-newfile'].forEach(id=>document.getElementById(id).style.display='none');
+  ['btn-settings','btn-load','btn-save','btn-csv','btn-xl','btn-accountant','btn-newfile'].forEach(id=>document.getElementById(id).style.display='none');
   ['file-input','session-input'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('error-banner').style.display='none';
   document.getElementById('dup-banner').classList.remove('visible');
@@ -2193,7 +2387,12 @@ function showError(msg,inApp){const e=document.getElementById(inApp?'error-banne
 function buildCatFilter(){
   const s=document.getElementById('cat-filter');
   s.innerHTML='<option value="">All categories</option>';
-  CATS.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;s.appendChild(o);});
+  const gExp=document.createElement('optgroup');gExp.label='Expenses';
+  CATS.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;gExp.appendChild(o);});
+  s.appendChild(gExp);
+  const gInc=document.createElement('optgroup');gInc.label='Income';
+  INCOME_CATS.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;gInc.appendChild(o);});
+  s.appendChild(gInc);
   const u=document.createElement('option');u.value='__none__';u.textContent='— Uncategorised';s.appendChild(u);
 }
 
@@ -2323,19 +2522,24 @@ function exportExcel(){
   ];
   const basD=[[`BAS SUMMARY — FY ${s2}–${fyYr} (Business Transactions Only)`],
     ['Generated:',new Date().toLocaleDateString('en-AU')],[''],
-    ['Quarter','Period','# Transactions','Total Spend (incl. GST)','GST Claimable (1B)','Net (ex GST)']];
+    ['Quarter','Period','Purchases (incl. GST)','GST on Purchases (1B)','Income (incl. GST)','GST on Sales (1A)','Net GST (1A − 1B)']];
   qs.forEach(q=>{
-    const qr=bizRows.filter(r=>{const d=r.date instanceof Date?r.date:null;return r.isDebit&&d&&!isNaN(d)&&d>=q.from&&d<=q.to;});
-    const a=+qr.reduce((s,r)=>s+r.amount,0).toFixed(2);
-    const g=+qr.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);
-    basD.push([q.l,q.d,qr.length,a,g,+(a-g).toFixed(2)]);
+    const qDebit=bizRows.filter(r=>{const d=r.date instanceof Date?r.date:null;return r.isDebit&&d&&!isNaN(d)&&d>=q.from&&d<=q.to;});
+    const qCredit=visibleRows.filter(r=>{const d=r.date instanceof Date?r.date:null;return !r.isDebit&&r.bpType==='business'&&d&&!isNaN(d)&&d>=q.from&&d<=q.to;});
+    const spend=+qDebit.reduce((s,r)=>s+r.amount,0).toFixed(2);
+    const g1B=+qDebit.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);
+    const income=+qCredit.reduce((s,r)=>s+r.amount,0).toFixed(2);
+    const g1A=+qCredit.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);
+    basD.push([q.l,q.d,spend,g1B,income,g1A,+(g1A-g1B).toFixed(2)]);
   });
-  basD.push(['FULL YEAR','All quarters',bizRows.filter(r=>r.isDebit).length,tA,tG,+(tA-tG).toFixed(2)]);
-  basD.push([''],['Note: GST estimates only (1/11th). Confirm with accountant before lodging BAS.']);
+  basD.push(['FULL YEAR','All quarters',tA,tG,tCredits,
+    +visibleRows.filter(r=>!r.isDebit&&r.bpType==='business'&&r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2),
+    +(+visibleRows.filter(r=>!r.isDebit&&r.bpType==='business'&&r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2)-tG).toFixed(2)]);
+  basD.push([''],['Note: GST estimates only (1/11th). 1A = GST collected on sales, 1B = GST paid on purchases. Confirm with accountant before lodging BAS.']);
   const basWs=XLSX.utils.aoa_to_sheet(basD);
-  basWs['!cols']=[{wch:10},{wch:28},{wch:14},{wch:24},{wch:22},{wch:18}];
+  basWs['!cols']=[{wch:10},{wch:28},{wch:22},{wch:22},{wch:22},{wch:22},{wch:20}];
   if(basWs['A1'])basWs['A1'].s={font:{bold:true,sz:12,color:{rgb:'FFFFFF'},name:'Arial'},fill:{fgColor:{rgb:'002E5D'}},alignment:{horizontal:'center'}};
-  ['A','B','C','D','E','F'].forEach(c=>{if(basWs[c+'4'])basWs[c+'4'].s=tealH;});
+  ['A','B','C','D','E','F','G'].forEach(c=>{if(basWs[c+'4'])basWs[c+'4'].s=tealH;});
   XLSX.utils.book_append_sheet(wb,basWs,'BAS Summary');
 
   // By Category
@@ -2353,8 +2557,26 @@ function exportExcel(){
   ['A','B','C','D','E'].forEach(c=>{if(sumWs[c+'2'])sumWs[c+'2'].s=tealH;});
   XLSX.utils.book_append_sheet(wb,sumWs,'By Category');
 
+  // Income by Category
+  const incRows=visibleRows.filter(r=>!r.isDebit&&r.bpType==='business');
+  if(incRows.length){
+    const incD=[['INCOME BY CATEGORY (Business Only)'],['Category','Total Income','GST (1A)','Net (ex GST)','# Transactions']];
+    INCOME_CATS.forEach(cat=>{
+      const cr=incRows.filter(r=>r.category===cat);if(!cr.length)return;
+      const a=+cr.reduce((s,r)=>s+r.amount,0).toFixed(2);
+      const g=+cr.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);
+      incD.push([cat,a,g,+(a-g).toFixed(2),cr.length]);
+    });
+    const uc2=incRows.filter(r=>!r.category);
+    if(uc2.length){const a=+uc2.reduce((s,r)=>s+r.amount,0).toFixed(2);const g=+uc2.filter(r=>r.gstIncluded==='yes').reduce((s,r)=>s+r.gstAmt,0).toFixed(2);incD.push(['— Uncategorised',a,g,+(a-g).toFixed(2),uc2.length]);}
+    const incWs=XLSX.utils.aoa_to_sheet(incD);
+    incWs['!cols']=[{wch:34},{wch:16},{wch:14},{wch:14},{wch:14}];
+    ['A','B','C','D','E'].forEach(c=>{if(incWs[c+'2'])incWs[c+'2'].s=tealH;});
+    XLSX.utils.book_append_sheet(wb,incWs,'Income by Category');
+  }
+
   XLSX.writeFile(wb,'ANZ_Purchases_'+new Date().toISOString().slice(0,10)+'.xlsx');
-  toast('✓ Excel downloaded — Transactions · BAS Summary · By Category');
+  toast('✓ Excel downloaded — Transactions · BAS Summary · Categories');
 }
 
 // ── Debug Log ─────────────────────────────────────────────────────────────────
